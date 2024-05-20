@@ -77,9 +77,9 @@ def main(page: ft.Page):
         
         page.add(note_title)
         page.add(note_content)
-        page.add(ft.CupertinoFilledButton('Save', on_click=save_note))
-        page.add(ft.CupertinoFilledButton('Cancel', on_click=lambda e: main(page)))
-        page.add(ft.CupertinoFilledButton('Delete', on_click=lambda e: delete_note_page(note_id)))
+        page.add(ft.CupertinoButton('Save', bgcolor=colors.PRIMARY, color=colors.TEXT, on_click=save_note))
+        page.add(ft.CupertinoButton('Cancel', bgcolor=colors.PRIMARY, color=colors.TEXT, on_click=lambda e: main(page)))
+        page.add(ft.CupertinoButton('Delete', bgcolor=colors.PRIMARY, color=colors.TEXT, on_click=lambda e: delete_note_page(note_id)))
         
     def display_notes():   
         if not notes:
@@ -87,9 +87,9 @@ def main(page: ft.Page):
             return 
         for note in notes:
             if note.title:
-                page.add(ft.Row([ft.CupertinoFilledButton(note.title, on_click=lambda e: load_note(note)), ft.TextField(note.content, border=ft.InputBorder.NONE, multiline=True, min_lines=1, max_lines=3, hint_text='No content' if not note.content else None, disabled=True, width=(page.width - 250), color=colors.TEXT)]))
+                page.add(ft.Row([ft.CupertinoButton(note.title, bgcolor=colors.SECONDARY, color=colors.TEXT, on_click=lambda e: load_note(note)), ft.TextField(note.content, border=ft.InputBorder.NONE, multiline=True, min_lines=1, max_lines=3, hint_text='No content' if not note.content else None, disabled=True, width=(page.width - 250), color=colors.TEXT)]))
             else:
-                page.add(ft.Row([ft.CupertinoFilledButton('Untitled', on_click=lambda e: load_note(note)), ft.TextField(note.content, border=ft.InputBorder.NONE, multiline=True, min_lines=1, max_lines=3, hint_text='No content' if not note.content else None, disabled=True, width=(page.width - 250), color=colors.TEXT)]))
+                page.add(ft.Row([ft.CupertinoButton('Untitled', bgcolor=colors.SECONDARY, color=colors.TEXT, on_click=lambda e: load_note(note)), ft.TextField(note.content, border=ft.InputBorder.NONE, multiline=True, min_lines=1, max_lines=3, hint_text='No content' if not note.content else None, disabled=True, width=(page.width - 250), color=colors.TEXT)]))
             page.add(ft.Divider())
     
     def new_note(e):
@@ -119,9 +119,9 @@ def main(page: ft.Page):
         
         page.add(note_title)
         page.add(note_content)
-        page.add(ft.CupertinoFilledButton('Save', on_click=save_note))
-        page.add(ft.CupertinoFilledButton('Cancel', on_click=lambda e: main(page)))
-        page.add(ft.CupertinoFilledButton('Delete', on_click=delete_note))
+        page.add(ft.CupertinoButton('Save', bgcolor=colors.PRIMARY, color=colors.TEXT, on_click=save_note))
+        page.add(ft.CupertinoButton('Cancel', bgcolor=colors.PRIMARY, color=colors.TEXT, on_click=lambda e: main(page)))
+        page.add(ft.CupertinoButton('Delete', bgcolor=colors.PRIMARY, color=colors.TEXT, on_click=delete_note))
         
     
     page.clean()
