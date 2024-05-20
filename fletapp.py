@@ -8,6 +8,27 @@ if not os.path.exists('notes.json'):
     with open('notes.json', 'w') as f:
         json.dump([], f)
 
+class Colors:
+    def __init__(self):
+        self.BG = '#343a40'
+        self.TEXT = '#ffffff'
+        self.PRIMARY = '#007bff'
+        self.SECONDARY = '#0056b3'
+        self.SUCCESS = '#28a745'
+        self.DANGER = '#dc3545'
+        self.WARNING = '#ffc107'
+        self.INFO = '#17a2b8'
+    
+    def setLight(self):
+        self.BG = '#f8f9fa'
+        self.TEXT = '#000000'
+        
+    def setDark(self):
+        self.BG = '#343a40'
+        self.TEXT = '#ffffff'
+        
+colors = Colors()
+    
 class Note:
     def __init__(self, title="Untitled", content="", note_id=None):
         self.title = title
@@ -22,12 +43,10 @@ class Note:
 
 def main(page: ft.Page):
     def load_notes():
-        try:
-            with open('notes.json', 'r') as f:
-                notes_data = json.load(f)
-                return [Note(n['title'], n['content'], n['note_id']) for n in notes_data]
-        except FileNotFoundError:
-            return []
+        with open('notes.json', 'r') as f:
+            notes_data = json.load(f)
+            return [Note(n['title'], n['content'], n['note_id']) for n in notes_data]
+
         
     def load_note(note_info):
         def save_note(e):
@@ -39,9 +58,19 @@ def main(page: ft.Page):
                     notes[i] = Note(title, content, note.note_id)
                     with open('notes.json', 'w') as f:
                         json.dump([note.to_dict() for note in notes], f)
-            
+                        
+            main(page)
+        
+        def delete_note_page(note_id):
+            for i, note in enumerate(notes):
+                if note.note_id == note_id:
+                    notes.pop(i)
+                    with open('notes.json', 'w') as f:
+                        json.dump([note.to_dict() for note in notes], f)
+                        
+            main(page)
+          
         page.clean()
-        page.add(ft.CupertinoFilledButton('Back', on_click=lambda e: main(page)))
         note_title = ft.TextField(note_info.title, label='Title', hint_text='Title')
         note_content = ft.TextField(note_info.content, label='Note', hint_text='Note', multiline=True, min_lines=3, max_lines=5)
         note_id = note_info.note_id
@@ -49,13 +78,18 @@ def main(page: ft.Page):
         page.add(note_title)
         page.add(note_content)
         page.add(ft.CupertinoFilledButton('Save', on_click=save_note))
+        page.add(ft.CupertinoFilledButton('Cancel', on_click=lambda e: main(page)))
+        page.add(ft.CupertinoFilledButton('Delete', on_click=lambda e: delete_note_page(note_id)))
         
     def display_notes():   
         if not notes:
             page.add(ft.Text('No notes yet'))
             return 
         for note in notes:
-            page.add(ft.CupertinoFilledButton(note.title, on_click=lambda e: load_note(note)))
+            if note.title:
+                page.add(ft.Row([ft.CupertinoFilledButton(note.title, on_click=lambda e: load_note(note)), ft.TextField(note.content, border=ft.InputBorder.NONE, multiline=True, min_lines=1, max_lines=3, hint_text='No content' if not note.content else None, disabled=True, width=(page.width - 250), color=colors.TEXT)]))
+            else:
+                page.add(ft.Row([ft.CupertinoFilledButton('Untitled', on_click=lambda e: load_note(note)), ft.TextField(note.content, border=ft.InputBorder.NONE, multiline=True, min_lines=1, max_lines=3, hint_text='No content' if not note.content else None, disabled=True, width=(page.width - 250), color=colors.TEXT)]))
             page.add(ft.Divider())
     
     def new_note(e):
@@ -69,6 +103,14 @@ def main(page: ft.Page):
                 json.dump([note.to_dict() for note in notes], f)
                 
             main(page)
+            
+        def delete_note(e):
+            note_title.value = ''
+            note_content.value = ''
+            note_title.focus()
+            note_content.focus()
+            note_title.update()
+            note_title.update()
                 
         page.clean()
             
@@ -79,12 +121,13 @@ def main(page: ft.Page):
         page.add(note_content)
         page.add(ft.CupertinoFilledButton('Save', on_click=save_note))
         page.add(ft.CupertinoFilledButton('Cancel', on_click=lambda e: main(page)))
+        page.add(ft.CupertinoFilledButton('Delete', on_click=delete_note))
         
     
     page.clean()
     
     page.title = "Notey"
-    page.add(ft.FloatingActionButton(icon=ft.icons.ADD, on_click=new_note))
+    page.add(ft.FloatingActionButton(icon=ft.icons.ADD, on_click=new_note, bgcolor=colors.PRIMARY))
     page.add(ft.Stack())
     
     notes = load_notes()
