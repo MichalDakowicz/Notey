@@ -84,7 +84,7 @@ def load_notes():
 
     if settings['use_dropbox']:
         try:
-            dbx = dropbox.Dropbox(oauth2_refresh_token=settings['dropbox_token'], app_key='6uwbnzmdivfyrjr')
+            dbx = dropbox.Dropbox(settings['dropbox_token'])
             _, res = dbx.files_download(f'/{NOTES_FILE}')
             notes_data = json.loads(res.content)
         except Exception as e:
@@ -108,7 +108,7 @@ def save_notes(notes):
 
     if settings['use_dropbox']:
         try:
-            dbx = dropbox.Dropbox(oauth2_refresh_token=settings['dropbox_token'], app_key='6uwbnzmdivfyrjr')
+            dbx = dropbox.Dropbox(settings['dropbox_token'])
             dbx.files_upload(json.dumps(notes_data).encode(), f'/{NOTES_FILE}', mode=dropbox.files.WriteMode.overwrite)
         except Exception as e:
             print(f"Error saving to Dropbox: {e}")
@@ -141,8 +141,6 @@ def open_settings(e, page):
             except Exception as e:
                 print('Error: %s' % (e,))
             
-            # OAuth2FlowNoRedirectResult(sl.B1oKqKdjEtbtWCorOD1bPi0iXAWWFS59dyFgXc8IXBdU_7dryQTVqQSKRZajXdqoSAM_r07Uz8HtcZl4ZUNtsIho62MY1Tgee64r0iTUjAdL3S6O9Nb525nBu3KHT6GML0f5e92hLoLN, dbid:AACAwDcKaW64AmS7sS5547EonEv7xa7IzzQ, 2159225953, _EJ3x1kI08gAAAAAAAAAAQVZxWje17zBdf7S_6Hz-qOlxI6SC4ML1irtlpeSIH0O, 2024-05-21 14:29:15.506732, account_info.read files.content.read files.content.write files.metadata.read)
-            # needed part = sl.B1oKqKdjEtbtWCorOD1bPi0iXAWWFS59dyFgXc8IXBdU_7dryQTVqQSKRZajXdqoSAM_r07Uz8HtcZl4ZUNtsIho62MY1Tgee64r0iTUjAdL3S6O9Nb525nBu3KHT6GML0f5e92hLoLN
             settings['dropbox_token'] = oauth_result.access_token
             dropbox_token_field.value = settings['dropbox_token']
             dropbox_token_field.update()
