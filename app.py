@@ -82,20 +82,26 @@ def load_notes():
     with open(SETTINGS_FILE, 'r') as f:
         settings = json.load(f)
 
-    if settings['use_dropbox']:
+    if settings.get('use_dropbox', False) and settings.get('dropbox_token'): 
         try:
             dbx = dropbox.Dropbox(settings['dropbox_token'])
             _, res = dbx.files_download(f'/{NOTES_FILE}')
             notes_data = json.loads(res.content)
+            return [Note(n['title'], n['content'], n['note_id']) for n in notes_data]
         except Exception as e:
             print(f"Error loading from Dropbox: {e}")
-            # Fallback to loading from local file
+            # create the file and upload the contents of notes.json if it doesn't exist on dropbox
+            if 'not_found' in str(e):
+                dbx.files_upload(json.dumps([]).encode(), f'/{NOTES_FILE}', mode=dropbox.files.WriteMode.add)    
+            # Fallback to loading from local file if Dropbox fails
             with open(NOTES_FILE, 'r') as f:
                 notes_data = json.load(f)
+                return [Note(n['title'], n['content'], n['note_id']) for n in notes_data]
     else:
         with open(NOTES_FILE, 'r') as f:
             notes_data = json.load(f)
-    return [Note(n['title'], n['content'], n['note_id']) for n in notes_data]
+            return [Note(n['title'], n['content'], n['note_id']) for n in notes_data]
+
 
 def save_notes(notes):
     """Save notes to Dropbox or local file based on settings."""
@@ -106,7 +112,7 @@ def save_notes(notes):
     with open(NOTES_FILE, 'w') as f:
         json.dump(notes_data, f)
 
-    if settings['use_dropbox']:
+    if settings.get('use_dropbox', False) and settings.get('dropbox_token'):
         try:
             dbx = dropbox.Dropbox(settings['dropbox_token'])
             dbx.files_upload(json.dumps(notes_data).encode(), f'/{NOTES_FILE}', mode=dropbox.files.WriteMode.overwrite)
@@ -120,9 +126,16 @@ def open_settings(e, page):
         settings['use_dropbox'] = use_dropbox_switch.value
         settings['dropbox_token'] = dropbox_token_field.value
         
+        dbx = dropbox.Dropbox(settings['dropbox_token'])
+        dbx.files_upload(json.dumps([]).encode(), f'/{NOTES_FILE}', mode=dropbox.files.WriteMode.add)
+        
         with open(SETTINGS_FILE, 'w') as f:
             json.dump(settings, f)
-        open_settings(e, page)
+        
+        # Reload notes to reflect potential Dropbox sync
+        page.snack_bar = ft.SnackBar(ft.Text("Settings saved!"), open=True)
+        page.update()
+        main(page)  
 
     def set_light_mode(e):
         colors.setLight()
@@ -136,27 +149,28 @@ def open_settings(e, page):
         
     def change_dropbox(e):
         def save_dropbox_token(e):
+            token = auth_token.value
             try:
-                oauth_result = auth_flow.finish(auth_token.value)
-            except Exception as e:
-                print('Error: %s' % (e,))
-            
-            settings['dropbox_token'] = oauth_result.access_token
-            dropbox_token_field.value = settings['dropbox_token']
-            dropbox_token_field.update()
-            print(settings['dropbox_token'])
-            
+                oauth_result = auth_flow.finish(token.strip())
+                settings['dropbox_token'] = oauth_result.access_token
+                dropbox_token_field.value = settings['dropbox_token']
+                with open(SETTINGS_FILE, 'w') as f:
+                    json.dump(settings, f)
+                page.snack_bar = ft.SnackBar(ft.Text("Dropbox connected!"), open=True)
+            except Exception as ex:
+                print(f"Error in Dropbox authentication: {ex}")
+                page.snack_bar = ft.SnackBar(ft.Text(f"Invalid token: {ex}"), open=True)
+            page.update()
+        
         dropbox_token_field.disabled = not use_dropbox_switch.value
         if not dropbox_token_field.value and use_dropbox_switch.value:
             page.update()
-            auth_flow = dropbox.DropboxOAuth2FlowNoRedirect('6uwbnzmdivfyrjr', use_pkce=True, token_access_type='offline')
+            auth_flow = dropbox.DropboxOAuth2FlowNoRedirect('6uwbnzmdivfyrjr', '80u4sxq2n3bjor3', token_access_type='offline')
             authorize_url = auth_flow.start()
             webbrowser.open_new_tab(authorize_url)
             
             auth_token = ft.TextField(label='Enter Dropbox Access Token', hint_text='Access Token', password=True, can_reveal_password=True)
             page.add(auth_token, ft.ElevatedButton('Save Access Token', on_click=save_dropbox_token))
-            
-                    
         dropbox_token_field.update()
 
     page.clean()
@@ -168,8 +182,8 @@ def open_settings(e, page):
     with open(SETTINGS_FILE, 'r') as f:
         settings = json.load(f)
 
-    use_dropbox_switch = ft.Switch(value=settings['use_dropbox'], label="Use Dropbox", on_change=change_dropbox)
-    dropbox_token_field = ft.TextField(value=settings['dropbox_token'], label="Dropbox Access Token", password=True,
+    use_dropbox_switch = ft.Switch(value=settings.get('use_dropbox', False), label="Use Dropbox", on_change=change_dropbox)
+    dropbox_token_field = ft.TextField(value=settings.get('dropbox_token', ''), label="Dropbox Access Token", password=True,
                                        disabled=not use_dropbox_switch.value, can_reveal_password=True)
     
     page.add(ft.Row([ft.IconButton(ft.icons.LIGHT_MODE, on_click=set_light_mode), ft.Text("Light Mode"),
@@ -290,5 +304,6 @@ def main(page: ft.Page):
     notes = load_notes()
     
     display_notes(page, notes)
-    
+    page.update()
+
 ft.app(target=main)
