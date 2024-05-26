@@ -174,7 +174,7 @@ def open_settings(e, page):
         dropbox_token_field.update()
 
     page.clean()
-    page.add(ft.AppBar(ft.Image(src=f"logo-transparent.png"),
+    page.add(ft.AppBar(ft.Image(src=f"assets/logo-transparent.png"),
                      title=ft.Text('Settings', weight=ft.FontWeight.BOLD, color=colors.TEXT),
                      actions=[ft.IconButton(ft.icons.CLOSE, on_click=lambda e: main(page))],
                      bgcolor=colors.BGACCENT, color=colors.TEXT, elevation=0))
@@ -225,6 +225,12 @@ def load_note(note_info, page, notes):
         main(page)
       
     page.clean()
+    
+    page.add(ft.AppBar(ft.Image(src=f"assets/logo-transparent.png"), 
+                     title=ft.Text('Notey', weight=ft.FontWeight.BOLD, color=colors.TEXT), 
+                     actions=[ft.IconButton(ft.icons.SETTINGS, on_click=lambda e: open_settings(e, page))], 
+                     bgcolor=colors.BGACCENT, color=colors.TEXT, elevation=0))
+    
     note_title = ft.TextField(note_info.title, label='Title', hint_text='Title')
     note_content = ft.TextField(note_info.content, label='Note', hint_text='Note', multiline=True, min_lines=3, max_lines=5)
     note_id = note_info.note_id
@@ -232,9 +238,9 @@ def load_note(note_info, page, notes):
     page.add(note_title)
     page.add(note_content)
     page.add(ft.Row([
-        ft.CupertinoButton('Save', width=page.width / 3 - 13,  bgcolor=colors.PRIMARY, color=colors.BTNTEXT, on_click=save_note), 
-        ft.CupertinoButton('Cancel', width=page.width / 3 - 13,  bgcolor=colors.PRIMARY, color=colors.BTNTEXT, on_click=lambda e: main(page)), 
-        ft.CupertinoButton('Delete', width=page.width / 3 - 13,  bgcolor=colors.PRIMARY, color=colors.BTNTEXT, on_click=lambda e: delete_note_page(note_id))
+        ft.CupertinoButton('Save', width=page.width / 3 - 13, padding=10,  bgcolor=colors.PRIMARY, color=colors.BTNTEXT, on_click=save_note), 
+        ft.CupertinoButton('Cancel', width=page.width / 3 - 13, padding=10,  bgcolor=colors.PRIMARY, color=colors.BTNTEXT, on_click=lambda e: main(page)), 
+        ft.CupertinoButton('Delete', width=page.width / 3 - 13, padding=10,  bgcolor=colors.PRIMARY, color=colors.BTNTEXT, on_click=lambda e: delete_note_page(note_id))
         ]))
     
 def display_notes(page, notes):   
@@ -275,6 +281,11 @@ def new_note(e, page, notes):
         note_title.update()
                 
     page.clean()
+    
+    page.add(ft.AppBar(ft.Image(src=f"assets/logo-transparent.png"), 
+                     title=ft.Text('Notey', weight=ft.FontWeight.BOLD, color=colors.TEXT), 
+                     actions=[ft.IconButton(ft.icons.SETTINGS, on_click=lambda e: open_settings(e, page))], 
+                     bgcolor=colors.BGACCENT, color=colors.TEXT, elevation=0))
             
     note_title = ft.TextField(label='Title', hint_text='Title')
     note_content = ft.TextField(label='Note', hint_text='Note', multiline=True, min_lines=3, max_lines=5)
@@ -291,15 +302,13 @@ def new_note(e, page, notes):
 
 def main(page: ft.Page):
     page.clean()
-    
     page.title = "Notey"
-    page.add(ft.AppBar(ft.Image(src=f"logo-transparent.png"), 
+    page.add(ft.AppBar(ft.Image(src=f"assets/logo-transparent.png"), 
                      title=ft.Text('Notey', weight=ft.FontWeight.BOLD, color=colors.TEXT), 
                      actions=[ft.IconButton(ft.icons.SETTINGS, on_click=lambda e: open_settings(e, page))], 
                      bgcolor=colors.BGACCENT, color=colors.TEXT, elevation=0))
     page.add(ft.FloatingActionButton(icon=ft.icons.ADD, foreground_color=colors.BTNTEXT, 
                                     on_click=lambda e: new_note(e, page, notes), bgcolor=colors.PRIMARY))
-    page.add(ft.Stack())
     
     notes = load_notes()
     

@@ -1,5 +1,5 @@
 <div align="center" id="top"> 
-  <img src="logo.png" alt="Notey" style="width: 25%;"/>
+  <img src="Notey/assets/logo.png" alt="Notey" style="width: 25%;"/>
 
 </div>
 
@@ -71,7 +71,8 @@ Notey is a cross platform application that can be ran on Windows, MacOS and Linu
 
 1. Run the Flask application:
     ```bash
-    python3 app.py
+    cd Notey
+    python main.py
     ```
 
 ## Features
@@ -87,8 +88,11 @@ Have a suggestion or want to see a new feature added? Your input is invaluable! 
 
 #### Feature Plans
 
-1. FIX DROPBOX REFRESH TOKEN
-2. ADD MORE COLOR THEMES
+1. ADD BUTTON TEXT COLOR UPDATING ON THEME CHANGE
+2. FIX DROPBOX API KEY
+3. FIX DROPBOX REFRESH TOKEN
+4. ADD A WAY ON MOBILE TO GET THE API KEY
+5. ADD MORE COLOR THEMES
 
 ## Usage
 

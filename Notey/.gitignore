@@ -1,9 +1,3 @@
-notes.json
-api_key.txt
-settings.json
-.venv
-.vscode
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
