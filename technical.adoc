@@ -1,0 +1,136 @@
+= Technical Documentation for Notey
+
+This document provides technical details about the Notey application, a cross platform note taking application built using Flet. 
+
+== Table of Contents
+* Technologies Used
+* Application Structure
+* Data Storage
+* Functionality
+* Future Plans
+* Code Explanation
+
+For regular documentation go link:README.md[HERE]
+
+== Technologies Used
+
+* **'Python'**: Programming Language used for the backend logic of the application.
+* **'Flet'**: User Interface framework for building real-time web, desktop, and mobile applications with Python. 
+
+== Application Structure
+
+The application is organized into a single file:
+
+* **'app.py'**: Contains all the code for the user interface, logic, and data storage.
+
+== Data Storage
+
+The application currently uses a local JSON file for storing notes:
+
+* **'notes.json'**: Stores note data, including titles, content, and unique identifiers.
+
+== Functionality
+
+The Notey application provides the following features:
+
+* **'Note Creation'**: Users can create new notes with titles and content.
+* **'Note Editing'**: Users can edit existing notes.
+* **'Note Deletion'**: Users can delete existing notes.
+* **'Light and Dark Mode'**: Users can switch between light and dark themes for the user interface.
+* **'Color Theme Support'**: Users can choose from different color themes to customize the look of the application.
+
+== Future Plans
+
+Here are some potential future enhancements for the Notey application:
+
+* **'Dropbox Support'**: Allow users to store their notes on Dropbox for synchronization and backup.
+* **'Additional Color Themes'**: Provide more color theme options to choose from.
+
+== Code Explanation
+
+_**app.py**_
+
+This is the main Python file for the Notey application, built using the Flet framework. It handles the creation of the user interface, note management, and settings.
+
+```python
+import flet as ft
+
+import json
+import uuid
+import os
+import webbrowser
+
+import dropbox
+```
+
+This section imports the necessary modules for the application:
+
+- `flet` is used for creating the user interface and handling user interactions.
+- `json` is used for working with JSON data (loading and saving notes).
+- `uuid` is used for generating unique identifiers for notes.
+- `os` is used for interacting with the operating system (checking for file existence).
+- `webbrowser` is used for opening web pages (for Dropbox authentication).
+- `dropbox` is used for interacting with the Dropbox API (future feature).
+
+```python
+# --- App constants and data structures ---
+NOTES_FILE = 'notes.json'
+SETTINGS_FILE = 'settings.json'
+
+if not os.path.exists(NOTES_FILE):
+    with open(NOTES_FILE, 'w') as f:
+        json.dump([], f)
+
+if not os.path.exists(SETTINGS_FILE):
+    with open(SETTINGS_FILE, 'w') as f:
+        json.dump({'use_dropbox': False, 'dropbox_token': ''}, f)
+
+class Colors:
+    # ... (Color theme definitions) ...
+
+colors = Colors()
+
+class Note:
+    # ... (Note class definition) ...
+
+# --- Helper functions ---
+
+def load_notes():
+    # ... (Loads notes from local storage or Dropbox) ...
+
+def save_notes(notes):
+    # ... (Saves notes to local storage or Dropbox) ...
+
+# --- Flet UI functions ---
+
+def open_settings(e, page):
+    # ... (Settings page implementation) ...
+
+def load_note(note_info, page, notes):
+    # ... (Loads a note for editing) ...
+
+def display_notes(page, notes):
+    # ... (Displays the list of notes) ...
+
+def new_note(e, page, notes):
+    # ... (Creates a new note) ...
+
+# --- Main application function ---
+
+def main(page: ft.Page):
+    # ... (Main function to initialize and run the Flet app) ...
+
+ft.app(target=main)
+```
+
+The code is structured with constants, data structures, helper functions, Flet UI functions, and a main application function:
+
+- **App constants and data structures**: Define file names for notes and settings, color themes, and the `Note` class to represent a note.
+- **Helper functions**: Handle loading and saving notes from/to storage.
+- **Flet UI functions**: Implement various parts of the user interface, including settings, note loading/editing, note display, and new note creation.
+- **Main application function (`main`)**: Initializes the Flet application, loads notes, sets up the basic layout, and handles user interactions.
+
+The code utilizes Flet's UI elements like `AppBar`, `FloatingActionButton`, `TextField`, `CupertinoButton`, `Stack`, `Row`, `Divider`, and more to create the user interface. It also incorporates event handling (`on_click`), state management, and dynamic UI updates to provide a responsive and interactive note-taking experience.
+```
+
+This documentation explains the code's functionality, structure, and the technologies used in the Notey application. It also highlights future plans for enhancing the application's capabilities.
