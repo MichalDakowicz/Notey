@@ -27,6 +27,12 @@ I SUGGEST USING LOCAL STORAGE FOR NOW AS DROPBOX REFRESH TOKEN IS NOT WORKING YE
     A simple note taking application built with Flet.
 </div>
 
+<br>
+
+<div align="center">
+    Head over to the <a href=https://github.com/MichalDakowicz/Notey/releases/tag/v0.1-beta>Beta Release page</a> to download the latest version of Notey.
+</div>
+
 <hr>
 
 ## Table of Contents
