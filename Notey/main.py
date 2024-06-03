@@ -3,9 +3,6 @@ import flet as ft
 import json
 import uuid
 import os
-import webbrowser
-
-import dropbox
 
 # --- App constants and data structures ---
 NOTES_FILE = 'notes.json'
@@ -17,50 +14,100 @@ if not os.path.exists(NOTES_FILE):
 
 if not os.path.exists(SETTINGS_FILE):
     with open(SETTINGS_FILE, 'w') as f:
-        json.dump({'use_dropbox': False, 'dropbox_token': ''}, f)
+        json.dump({'theme': 'Blue', 'light-mode': False}, f)
 
 class Colors:
     def __init__(self):
-        self.COLOR_THEME = 'Blue'
-        self.BG = '#1A1C1E'
-        self.BGACCENT = '#151618'
-        self.TEXT = '#ffffff'
-        self.BTNTEXT = '#ffffff'
-        self.PRIMARY = '#007bff'
-        self.SECONDARY = '#0056b3'
+        self.COLOR_THEME = ''
+        self.LOGO = ''
+        self.BG = ''
+        self.BGACCENT = ''
+        self.TEXT = ''
+        self.BTNTEXT = ''
+        self.PRIMARY = ''
+        self.SECONDARY = ''
+        
         self.SUCCESS = '#28a745'
         self.DANGER = '#dc3545'
         self.WARNING = '#ffc107'
         self.INFO = '#17a2b8'
+        
+        with open(SETTINGS_FILE, 'r') as f:
+            settings = json.load(f)
+        
+        if settings.get('light-mode'):
+            self.setLight()
+        else:
+            self.setDark()
+            
+        if settings.get('theme') == 'Blue':
+            self.setBlue()
+        elif settings.get('theme') == 'Olive':
+            self.setOlive()
+        elif settings.get('theme') == 'Sunset':
+            self.setSunset()
+            
+        
+        
     
     def setLight(self):
         self.BG = '#f8f9fa'
         self.BGACCENT = '#e9ecef'
         self.TEXT = '#000000'
         
+        self.save()
+        
     def setDark(self):
         self.BG = '#1A1C1E'
         self.BGACCENT = '#151618'
         self.TEXT = '#ffffff'
         
+        self.save()
+        
     def setBlue(self):
         self.COLOR_THEME = 'Blue'
+        self.LOGO = 'assets/logo-transparent-blue.png'
         self.PRIMARY = '#007bff'
         self.SECONDARY = '#0056b3'
-        self.BTNTEXT = self.TEXT
+        self.BTNTEXT = '#ffffff'
+        
+        self.save()
     
     def setOlive(self):
         self.COLOR_THEME = 'Olive'
-        self.PRIMARY = '#661b04'
-        self.SECONDARY = '#8a2e00'
+        self.LOGO = 'assets/logo-transparent-olive.png'
+        self.PRIMARY = '#8a2e00'
+        self.SECONDARY = '#661b04'
         self.BTNTEXT = '#ffffff'
+        
+        self.save()
         
     def setSunset(self):
         self.COLOR_THEME = 'Sunset'
-        self.PRIMARY = '#ff4500'
-        self.SECONDARY = '#ff8c00'
-        self.BTNTEXT = self.TEXT
+        self.LOGO = 'assets/logo-transparent-sunset.png'
+        self.PRIMARY = '#ff8c00'
+        self.SECONDARY = '#ff4500'
+        self.BTNTEXT = '#ffffff'
+
+        self.save()
+
+    def save(self):
+        if os.path.exists(SETTINGS_FILE):
+            with open(SETTINGS_FILE, 'r') as f:
+                settings = json.load(f)
+        else:
+            settings = {}
+
+        settings['theme'] = self.COLOR_THEME
+
+        if self.BG == '#f8f9fa':
+            settings['light-mode'] = True
+        else:
+            settings['light-mode'] = False
         
+        with open(SETTINGS_FILE, 'w') as f:
+            json.dump(settings, f)
+
 colors = Colors()
 
 class Note:
@@ -78,65 +125,19 @@ class Note:
 # --- Helper functions ---
 
 def load_notes():
-    """Load notes from Dropbox or local file based on settings."""
-    with open(SETTINGS_FILE, 'r') as f:
-        settings = json.load(f)
-
-    if settings.get('use_dropbox', False) and settings.get('dropbox_token'): 
-        try:
-            dbx = dropbox.Dropbox(settings['dropbox_token'])
-            _, res = dbx.files_download(f'/{NOTES_FILE}')
-            notes_data = json.loads(res.content)
-            return [Note(n['title'], n['content'], n['note_id']) for n in notes_data]
-        except Exception as e:
-            print(f"Error loading from Dropbox: {e}")
-            # create the file and upload the contents of notes.json if it doesn't exist on dropbox
-            if 'not_found' in str(e):
-                dbx.files_upload(json.dumps([]).encode(), f'/{NOTES_FILE}', mode=dropbox.files.WriteMode.add)    
-            # Fallback to loading from local file if Dropbox fails
-            with open(NOTES_FILE, 'r') as f:
-                notes_data = json.load(f)
-                return [Note(n['title'], n['content'], n['note_id']) for n in notes_data]
-    else:
-        with open(NOTES_FILE, 'r') as f:
-            notes_data = json.load(f)
-            return [Note(n['title'], n['content'], n['note_id']) for n in notes_data]
+    with open(NOTES_FILE, 'r') as f:
+        notes_data = json.load(f)
+        return [Note(n['title'], n['content'], n['note_id']) for n in notes_data]
 
 
 def save_notes(notes):
-    """Save notes to Dropbox or local file based on settings."""
-    with open(SETTINGS_FILE, 'r') as f:
-        settings = json.load(f)
-
     notes_data = [note.to_dict() for note in notes]
     with open(NOTES_FILE, 'w') as f:
         json.dump(notes_data, f)
 
-    if settings.get('use_dropbox', False) and settings.get('dropbox_token'):
-        try:
-            dbx = dropbox.Dropbox(settings['dropbox_token'])
-            dbx.files_upload(json.dumps(notes_data).encode(), f'/{NOTES_FILE}', mode=dropbox.files.WriteMode.overwrite)
-        except Exception as e:
-            print(f"Error saving to Dropbox: {e}")
-
 # --- Flet UI functions ---
 
 def open_settings(e, page):
-    def save_settings(e):
-        settings['use_dropbox'] = use_dropbox_switch.value
-        settings['dropbox_token'] = dropbox_token_field.value
-        
-        dbx = dropbox.Dropbox(settings['dropbox_token'])
-        dbx.files_upload(json.dumps([]).encode(), f'/{NOTES_FILE}', mode=dropbox.files.WriteMode.add)
-        
-        with open(SETTINGS_FILE, 'w') as f:
-            json.dump(settings, f)
-        
-        # Reload notes to reflect potential Dropbox sync
-        page.snack_bar = ft.SnackBar(ft.Text("Settings saved!"), open=True)
-        page.update()
-        main(page)  
-
     def set_light_mode(e):
         colors.setLight()
         page.theme_mode = 'light'
@@ -146,45 +147,15 @@ def open_settings(e, page):
         colors.setDark()
         page.theme_mode = 'dark'
         open_settings(e, page)
-        
-    def change_dropbox(e):
-        def save_dropbox_token(e):
-            token = auth_token.value
-            try:
-                oauth_result = auth_flow.finish(token.strip())
-                settings['dropbox_token'] = oauth_result.access_token
-                dropbox_token_field.value = settings['dropbox_token']
-                with open(SETTINGS_FILE, 'w') as f:
-                    json.dump(settings, f)
-                page.snack_bar = ft.SnackBar(ft.Text("Dropbox connected!"), open=True)
-            except Exception as ex:
-                print(f"Error in Dropbox authentication: {ex}")
-                page.snack_bar = ft.SnackBar(ft.Text(f"Invalid token: {ex}"), open=True)
-            page.update()
-        
-        dropbox_token_field.disabled = not use_dropbox_switch.value
-        if not dropbox_token_field.value and use_dropbox_switch.value:
-            page.update()
-            auth_flow = dropbox.DropboxOAuth2FlowNoRedirect('6uwbnzmdivfyrjr', '80u4sxq2n3bjor3', token_access_type='offline')
-            authorize_url = auth_flow.start()
-            webbrowser.open_new_tab(authorize_url)
-            
-            auth_token = ft.TextField(label='Enter Dropbox Access Token', hint_text='Access Token', password=True, can_reveal_password=True)
-            page.add(auth_token, ft.ElevatedButton('Save Access Token', on_click=save_dropbox_token))
-        dropbox_token_field.update()
 
     page.clean()
-    page.add(ft.AppBar(ft.Image(src=f"assets/logo-transparent.png"),
+    page.add(ft.AppBar(ft.Image(src=colors.LOGO),
                      title=ft.Text('Settings', weight=ft.FontWeight.BOLD, color=colors.TEXT),
                      actions=[ft.IconButton(ft.icons.CLOSE, on_click=lambda e: main(page))],
                      bgcolor=colors.BGACCENT, color=colors.TEXT, elevation=0))
 
     with open(SETTINGS_FILE, 'r') as f:
         settings = json.load(f)
-
-    use_dropbox_switch = ft.Switch(value=settings.get('use_dropbox', False), label="Use Dropbox", on_change=change_dropbox)
-    dropbox_token_field = ft.TextField(value=settings.get('dropbox_token', ''), label="Dropbox Access Token", password=True,
-                                       disabled=not use_dropbox_switch.value, can_reveal_password=True)
     
     page.add(ft.Row([ft.IconButton(ft.icons.LIGHT_MODE, on_click=set_light_mode), ft.Text("Light Mode"),
                      ft.IconButton(ft.icons.DARK_MODE, on_click=set_dark_mode), ft.Text("Dark Mode")]))
@@ -199,10 +170,6 @@ def open_settings(e, page):
         ft.CupertinoButton('Sunset', width=page.width / 3 - 13, padding=10, bgcolor='#ff4500', color=colors.BTNTEXT,
                           on_click=lambda e: (colors.setSunset(), open_settings(e, page)))
     ]))
-
-    page.add(use_dropbox_switch)
-    page.add(dropbox_token_field)
-    page.add(ft.ElevatedButton("Save Settings", on_click=save_settings))
 
 def load_note(note_info, page, notes):
     def save_note(e):
@@ -226,7 +193,7 @@ def load_note(note_info, page, notes):
       
     page.clean()
     
-    page.add(ft.AppBar(ft.Image(src=f"assets/logo-transparent.png"), 
+    page.add(ft.AppBar(ft.Image(src=colors.LOGO), 
                      title=ft.Text('Notey', weight=ft.FontWeight.BOLD, color=colors.TEXT), 
                      actions=[ft.IconButton(ft.icons.SETTINGS, on_click=lambda e: open_settings(e, page))], 
                      bgcolor=colors.BGACCENT, color=colors.TEXT, elevation=0))
@@ -272,7 +239,7 @@ def new_note(e, page, notes):
         save_notes(notes)
         main(page)
             
-    def delete_note(e):
+    def clear_note(e):
         note_title.value = ''
         note_content.value = ''
         note_title.focus()
@@ -282,7 +249,7 @@ def new_note(e, page, notes):
                 
     page.clean()
     
-    page.add(ft.AppBar(ft.Image(src=f"assets/logo-transparent.png"), 
+    page.add(ft.AppBar(ft.Image(src=colors.LOGO), 
                      title=ft.Text('Notey', weight=ft.FontWeight.BOLD, color=colors.TEXT), 
                      actions=[ft.IconButton(ft.icons.SETTINGS, on_click=lambda e: open_settings(e, page))], 
                      bgcolor=colors.BGACCENT, color=colors.TEXT, elevation=0))
@@ -295,15 +262,16 @@ def new_note(e, page, notes):
     page.add(ft.Row([
         ft.CupertinoButton('Save', width=page.width / 3 - 13, padding=10, bgcolor=colors.PRIMARY, color=colors.BTNTEXT, on_click=save_note), 
         ft.CupertinoButton('Cancel', width=page.width / 3 - 13, padding=10, bgcolor=colors.PRIMARY, color=colors.BTNTEXT, on_click=lambda e: main(page)), 
-        ft.CupertinoButton('Delete', width=page.width / 3 - 13, padding=10, bgcolor=colors.PRIMARY, color=colors.BTNTEXT, on_click=delete_note)
+        ft.CupertinoButton('Clear', width=page.width / 3 - 13, padding=10, bgcolor=colors.PRIMARY, color=colors.BTNTEXT, on_click=clear_note)
         ]))
 
 # --- Main application function ---
 
 def main(page: ft.Page):
     page.clean()
+    page.theme_mode = 'dark' if colors.BG == '#1A1C1E' else 'light'
     page.title = "Notey"
-    page.add(ft.AppBar(ft.Image(src=f"assets/logo-transparent.png"), 
+    page.add(ft.AppBar(ft.Image(src=colors.LOGO), 
                      title=ft.Text('Notey', weight=ft.FontWeight.BOLD, color=colors.TEXT), 
                      actions=[ft.IconButton(ft.icons.SETTINGS, on_click=lambda e: open_settings(e, page))], 
                      bgcolor=colors.BGACCENT, color=colors.TEXT, elevation=0))
