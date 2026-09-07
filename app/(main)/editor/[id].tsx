@@ -21,8 +21,10 @@ import { SlashMenu, type CaretSpot } from '../../../components/SlashMenu';
 import { Empty, Screen } from '../../../components/ui';
 import {
   convertMarker,
+  depthAllowed,
   evenRows,
   isEmptyMarked,
+  LISTS,
   nextKind,
   parseDoc,
   serializeDoc,
@@ -31,6 +33,7 @@ import {
 } from '../../../lib/doc';
 import { mdOf, plainFor, replaceRuns, runsOf } from '../../../lib/field';
 import { useFittedDisplaySize } from '../../../lib/fit';
+import { useIsWide } from '../../../lib/layout';
 import type { Marks } from '../../../lib/rich';
 import { useStore } from '../../../lib/store';
 import {
@@ -66,6 +69,7 @@ export default function Editor() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const wide = useIsWide();
   const { noteById, notebookById, notes, mentionables, updateNote, flushSaves } = useStore();
 
   const note = noteById(id);
@@ -278,6 +282,34 @@ export default function Editor() {
     shapeTable(i, [...rows.map((row) => [...row]), rows[0].map(() => '')], r + 1, c);
   }
 
+  /**
+   * Tab nests a list item under the one above it, Shift+Tab lifts it back out.
+   * The rules live in the model: an item can only be one level deeper than the
+   * item it hangs under, and the first item of a list has nothing to hang under.
+   */
+  function nest(i: number, back: boolean) {
+    const block = blocks[i];
+    if (!LISTS.includes(block.kind)) return;
+
+    const at = block.depth ?? 0;
+    const want = back ? at - 1 : at + 1;
+    const depth = depthAllowed(blocks, i, want);
+    if (depth === at) return;
+
+    const next = [...blocks];
+    next[i] = { ...block, depth };
+
+    // The items nested under this one travel with it.
+    for (let j = i + 1; j < next.length; j += 1) {
+      const child = next[j];
+      if (!LISTS.includes(child.kind) || (child.depth ?? 0) <= at) break;
+      next[j] = { ...child, depth: Math.max(0, (child.depth ?? 0) + (depth - at)) };
+    }
+
+    save(next);
+    setForced({ start: sel.current.start, end: sel.current.end });
+  }
+
   /** Up or down off the edge of a block: the caret carries on in the next one. */
   function crossTo(i: number, dir: -1 | 1) {
     const to = i + dir;
@@ -363,6 +395,9 @@ export default function Editor() {
           text: converted.kind === 'fence' ? '' : mdOf(trimmed.runs),
           done: converted.kind === 'todo' ? converted.done : undefined,
           lang: converted.kind === 'fence' ? (converted.lang ?? '') : undefined,
+          // A list that becomes another kind of list stays where it sits.
+          depth: LISTS.includes(converted.kind) ? (block.depth ?? 0) : undefined,
+          rows: converted.rows,
         },
         Math.max(0, caret - cut),
       );
@@ -409,7 +444,13 @@ export default function Editor() {
     const kind = nextKind(block);
     const next = [...blocks];
     next[i] = { ...block, text: head };
-    next.splice(i + 1, 0, { kind, text: tail, ...(kind === 'todo' ? { done: false } : {}) });
+    next.splice(i + 1, 0, {
+      kind,
+      text: tail,
+      // A new item stays at the level of the one it came from.
+      ...(LISTS.includes(kind) ? { depth: block.depth ?? 0 } : {}),
+      ...(kind === 'todo' ? { done: false } : {}),
+    });
     write(next, i + 1, 0);
   }
 
@@ -419,6 +460,13 @@ export default function Editor() {
    */
   function onBackspaceAtStart(i: number) {
     const block = blocks[i];
+
+    // A nested item comes out one level at a time before it loses its shape.
+    if (LISTS.includes(block.kind) && (block.depth ?? 0) > 0) {
+      nest(i, true);
+      return;
+    }
+
     if (block.kind !== 'p') {
       replace(i, { kind: 'p', done: undefined, lang: undefined }, 0);
       return;
@@ -546,7 +594,8 @@ export default function Editor() {
   copyRef.current = copySpan;
 
   const panelBottom = keyboard ? keyboard + 12 : insets.bottom + 96;
-  let number = 0;
+  /** A running number per level, so every level counts from one on screen too. */
+  const counters: number[] = [];
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
@@ -555,7 +604,12 @@ export default function Editor() {
         contentContainerStyle={{
           paddingTop: insets.top + 10,
           paddingBottom: (keyboard || insets.bottom + 130) + 60,
-          paddingHorizontal: 20,
+          // The same measure as the note it turns into, so nothing shifts
+          // sideways between reading and writing.
+          paddingHorizontal: wide ? 52 : 20,
+          maxWidth: wide ? 780 : undefined,
+          width: '100%',
+          alignSelf: 'center',
           gap: 10,
         }}
         keyboardShouldPersistTaps="handled"
@@ -592,8 +646,15 @@ export default function Editor() {
 
         <View style={{ gap: 3 }}>
           {blocks.map((block, i) => {
-            if (block.kind === 'number') number += 1;
-            else number = 0;
+            const depth = block.depth ?? 0;
+            if (!LISTS.includes(block.kind)) counters.length = 0;
+            else counters.length = Math.min(counters.length, depth + 1);
+
+            let number = 0;
+            if (block.kind === 'number') {
+              counters[depth] = (counters[depth] ?? 0) + 1;
+              number = counters[depth];
+            }
 
             const held = !!spanBounds && i >= spanBounds.lo && i <= spanBounds.hi;
 
@@ -770,7 +831,12 @@ export default function Editor() {
             return (
               <View
                 key={i}
-                style={[styles.row, block.kind === 'quote' && styles.quoteRow, held && styles.held]}
+                style={[
+                  styles.row,
+                  block.kind === 'quote' && styles.quoteRow,
+                  held && styles.held,
+                  !!block.depth && { marginLeft: block.depth * 20 },
+                ]}
               >
                 <Prefix
                   block={block}
@@ -798,6 +864,7 @@ export default function Editor() {
                   onBackspaceAtStart={() => onBackspaceAtStart(i)}
                   onCaretSpot={setSpot}
                   blockId={String(i)}
+                  onTab={LISTS.includes(block.kind) ? (back) => nest(i, back) : undefined}
                   onCross={(dir) => crossTo(i, dir)}
                   onSelectAcross={(dir) => growSpan(i, dir)}
                   // Arrows only belong to the editor while the menu is open;
@@ -832,6 +899,9 @@ export default function Editor() {
           <Text style={{ fontFamily: f.b800 }}>*italic*</Text>,{' '}
           <Text style={{ fontFamily: f.b800 }}>`code`</Text>,{' '}
           <Text style={{ fontFamily: f.b800 }}>~struck~</Text>,{' '}
+          <Text style={{ fontFamily: f.b800 }}>-&gt;</Text> and{' '}
+          <Text style={{ fontFamily: f.b800 }}>--&gt;</Text> for arrows, short and long, the same
+          backwards and both ways,{' '}
           <Text style={{ fontFamily: f.b800 }}>==marked==</Text>. At the head of a block,{' '}
           <Text style={{ fontFamily: f.b800 }}>##</Text> makes a heading,{' '}
           <Text style={{ fontFamily: f.b800 }}>-</Text> a bullet,{' '}
@@ -840,7 +910,8 @@ export default function Editor() {
           <Text style={{ fontFamily: f.b800 }}>||</Text> starts a table (one pipe per column),{' '}
           <Text style={{ fontFamily: f.b800 }}>@</Text> links a note. In a table, Tab walks the
           cells and adds a row at the end, the arrows step between rows, and Backspace in an empty
-          one throws the table away. Backspace at the head of a block clears its shape. The arrows
+          one throws the table away. Tab nests a list item under the one above it and Shift+Tab lifts it
+          back out. Backspace at the head of a block clears its shape. The arrows
           walk the lines and carry on into the next block; hold Shift with them to take whole
           blocks, then Copy or Delete.
         </Text>

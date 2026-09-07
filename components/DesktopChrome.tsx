@@ -1,6 +1,16 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter, usePathname } from 'expo-router';
-import React, { useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  Animated,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
 import { Blob } from './Blob';
 import { LogoMark } from './Logo';
@@ -9,6 +19,56 @@ import { initialsOf, useAuth } from '../lib/auth';
 import { useStore } from '../lib/store';
 import { relative } from '../lib/time';
 import { c, f, NAV_OFF, NAV_ON, shadow, tintOf } from '../theme/tokens';
+
+const SHELF_KEY = 'notey.shelf';
+const SHELF_W = 244;
+const HANDLE = 18;
+
+/**
+ * The grip beside the shelf.
+ *
+ * Always drawn, and always showing which way the shelf will go: a control that
+ * appears only on hover is a control nobody finds twice.
+ *
+ * With the shelf away the grip is pinned to the rail rather than sitting in the
+ * row. It has to stay still: a hover target that moves because it was hovered
+ * slides out from under the cursor, loses the hover, slides back, and catches
+ * the cursor again — open and shut, over and over.
+ */
+function EdgeHandle({
+  open,
+  floating,
+  onPress,
+  onHoverIn,
+  onHoverOut,
+}: {
+  open: boolean;
+  floating?: boolean;
+  onPress: () => void;
+  onHoverIn?: () => void;
+  onHoverOut?: () => void;
+}) {
+  const [hover, setHover] = useState(false);
+  return (
+    <Pressable
+      accessibilityLabel={open ? 'Hide the notebooks' : 'Show the notebooks'}
+      onPress={onPress}
+      onHoverIn={() => {
+        setHover(true);
+        onHoverIn?.();
+      }}
+      onHoverOut={() => {
+        setHover(false);
+        onHoverOut?.();
+      }}
+      style={[styles.handle, floating ? styles.handleFloating : null, hover && styles.handleOn]}
+    >
+      <View style={[styles.grip, hover && styles.gripOn]}>
+        <Icon name={open ? 'chevronLeft' : 'chevronRight'} size={13} color={c.n700} />
+      </View>
+    </Pressable>
+  );
+}
 
 /**
  * The desktop half of the design: the islands unroll into a rail, and the
@@ -22,6 +82,53 @@ export function DesktopChrome({ onProfile }: { onProfile: () => void }) {
 
   const [nbFilter, setNbFilter] = useState<string | null>(null);
   const [q, setQ] = useState('');
+
+  /**
+   * One switch, two states: the note list on its own, or the shelf beside it.
+   * The list never goes away — a page with nothing to navigate by is not worth
+   * the strip of screen that hiding it would win.
+   */
+  const [shelf, setShelf] = useState(true);
+  /** True while the cursor is holding the shelf open for a look. */
+  const [peek, setPeek] = useState(false);
+  const peekTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // The choice is a preference, so it outlives the session.
+  useEffect(() => {
+    let alive = true;
+    AsyncStorage.getItem(SHELF_KEY)
+      .then((raw) => {
+        if (alive && raw) setShelf(raw === 'open');
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+      if (peekTimer.current) clearTimeout(peekTimer.current);
+    };
+  }, []);
+
+  function toggleShelf() {
+    setShelf((now) => {
+      void AsyncStorage.setItem(SHELF_KEY, now ? 'away' : 'open').catch(() => undefined);
+      return !now;
+    });
+    setPeek(false);
+  }
+
+  /**
+   * A beat before the shelf slides away again, so crossing the gap between the
+   * grip and the shelf does not close it under the cursor.
+   */
+  function holdPeek() {
+    if (peekTimer.current) clearTimeout(peekTimer.current);
+    peekTimer.current = null;
+    setPeek(true);
+  }
+
+  function releasePeek(after = 170) {
+    if (peekTimer.current) clearTimeout(peekTimer.current);
+    peekTimer.current = setTimeout(() => setPeek(false), after);
+  }
 
   const segment = pathname.split('/')[1] ?? '';
   const selectedId = pathname.split('/')[2];
@@ -65,15 +172,34 @@ export function DesktopChrome({ onProfile }: { onProfile: () => void }) {
     },
   ];
 
+  /**
+   * A new note goes in the notebook being looked at. With the list showing
+   * everything there is no such notebook, so there is no button either: a note
+   * filed somewhere the writer did not choose is a note they will not find.
+   */
+  const picked = nbFilter ? notebookById(nbFilter) : undefined;
+
   async function newNote() {
-    const target = nbFilter ?? notebooks[0]?.id;
-    if (!target) {
-      router.replace('/shelf');
-      return;
-    }
-    const made = await createNote(target);
+    if (!picked) return;
+    const made = await createNote(picked.id);
     if (made) router.replace(`/editor/${made.id}`);
   }
+
+  /**
+   * The shelf slides the rest of the page across rather than covering it, so
+   * nothing sits hidden underneath. Its width is what moves; the column inside
+   * keeps its own, so the contents do not reflow on the way.
+   */
+  const slide = useRef(new Animated.Value(shelf ? SHELF_W : 0)).current;
+  const shelfOut = shelf || peek;
+
+  useEffect(() => {
+    Animated.timing(slide, {
+      toValue: shelfOut ? SHELF_W : 0,
+      duration: 170,
+      useNativeDriver: false,
+    }).start();
+  }, [shelfOut, slide]);
 
   return (
     <>
@@ -109,8 +235,25 @@ export function DesktopChrome({ onProfile }: { onProfile: () => void }) {
         </Pressable>
       </View>
 
-      <View style={styles.notebookColumn}>
-        <Text style={styles.columnTitle}>Notebooks</Text>
+      <Animated.View style={[styles.slide, { width: slide }]}>
+        {/* Hovering the shelf holds it open, so it does not slide away on the
+            cursor's way to a notebook. */}
+        <Pressable
+          onHoverIn={shelf ? undefined : holdPeek}
+          onHoverOut={shelf ? undefined : () => releasePeek(120)}
+          style={styles.notebookColumn}
+        >
+        <View style={styles.columnHead}>
+          <View style={styles.columnTitleRow}>
+            {picked ? <Blob size={13} color={tintOf(picked.tint).tint} /> : null}
+            <Text style={styles.columnTitle} numberOfLines={1}>
+              {picked ? picked.name : 'Notebooks'}
+            </Text>
+          </View>
+          <Text style={styles.columnNote} numberOfLines={1}>
+            {picked ? 'New notes land here' : 'Pick a notebook to start a note'}
+          </Text>
+        </View>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 5 }}>
           <Pressable
             onPress={() => setNbFilter(null)}
@@ -163,9 +306,31 @@ export function DesktopChrome({ onProfile }: { onProfile: () => void }) {
             ))}
           </View>
         </View>
-      </View>
+        </Pressable>
+      </Animated.View>
+
+      {/* Open, the grip sits between the two columns. Away, it stays pinned by
+          the rail so that hovering it cannot move it. */}
+      <EdgeHandle
+        open={shelf}
+        floating={!shelf}
+        onPress={toggleShelf}
+        onHoverIn={shelf ? undefined : holdPeek}
+        onHoverOut={shelf ? undefined : () => releasePeek()}
+      />
 
       <View style={styles.listColumn}>
+        {/* With the shelf away, this line is the only thing saying which
+            notebook the list belongs to. */}
+        {!shelf ? (
+          <View style={styles.listHead}>
+            {picked ? <Blob size={12} color={tintOf(picked.tint).tint} /> : null}
+            <Text style={styles.listHeadText} numberOfLines={1}>
+              {picked ? picked.name : 'All notes'}
+            </Text>
+          </View>
+        ) : null}
+
         <View style={styles.searchRow}>
           <View style={styles.searchBox}>
             <Icon name="search" size={16} color={c.n500} />
@@ -178,9 +343,15 @@ export function DesktopChrome({ onProfile }: { onProfile: () => void }) {
               style={styles.searchInput}
             />
           </View>
-          <Pressable accessibilityLabel="New note" onPress={newNote} style={styles.newNote}>
-            <Icon name="plus" size={18} color={c.paper} />
-          </Pressable>
+          {picked ? (
+            <Pressable
+              accessibilityLabel={`New note in ${picked.name}`}
+              onPress={newNote}
+              style={styles.newNote}
+            >
+              <Icon name="plus" size={18} color={c.paper} />
+            </Pressable>
+          ) : null}
         </View>
 
         <Text style={styles.kicker}>
@@ -240,15 +411,54 @@ const styles = StyleSheet.create({
   avatar: { width: 44, height: 44, borderRadius: 999 },
   initials: { fontFamily: f.head, fontSize: 13, color: c.a900 },
 
+  slide: { overflow: 'hidden' },
+  /**
+   * Pinned beside the rail, out of the row, and above the shelf that slides out
+   * next to it. The rail is 82 wide; this sits on its edge.
+   */
+  handleFloating: {
+    position: 'absolute',
+    left: 82,
+    top: 0,
+    bottom: 0,
+    width: HANDLE + 8,
+    zIndex: 9,
+    borderRightWidth: 0,
+  },
   notebookColumn: {
-    width: 244,
+    width: SHELF_W,
+    flex: 1,
     paddingVertical: 26,
-    paddingHorizontal: 18,
+    paddingLeft: 30,
+    paddingRight: 18,
     gap: 14,
+  },
+  handle: {
+    width: HANDLE,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRightWidth: 1,
     borderRightColor: c.n300,
   },
-  columnTitle: { fontFamily: f.head, fontSize: 19, color: c.text },
+  handleOn: { backgroundColor: c.n200 },
+  grip: {
+    width: 22,
+    height: 34,
+    marginLeft: -6,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: c.paper,
+    borderWidth: 1,
+    borderColor: c.n300,
+  },
+  gripOn: { backgroundColor: c.a100, borderColor: c.a300 },
+  listHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  listHeadText: { flex: 1, fontFamily: f.head, fontSize: 17, color: c.text },
+  columnHead: { gap: 2 },
+  columnTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  columnTitle: { flex: 1, fontFamily: f.head, fontSize: 19, color: c.text },
+  columnNote: { fontFamily: f.b600, fontSize: 11, color: c.n500 },
   nbRow: {
     flexDirection: 'row',
     alignItems: 'center',

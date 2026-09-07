@@ -48,8 +48,9 @@ export function typeInto(runs: Run[], nextPlain: string, pending: Pending): Type
   const before = plainOf(runs);
   let edit = applyPlainEdit(runs, nextPlain, pending ?? undefined);
 
-  // Dash, ellipsis and quote polish, on text that just grew.
-  if (nextPlain.length > before.length) {
+  // Arrow, dash, ellipsis and quote polish, on text that just grew — but not
+  // inside code, where "->" is an operator and has to stay as typed.
+  if (nextPlain.length > before.length && !marksBefore(edit.runs, edit.caret).code) {
     const polished = typography(nextPlain, edit.caret);
     if (polished.text !== nextPlain) {
       edit = applyPlainEdit(runs, polished.text, pending ?? undefined);

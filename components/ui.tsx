@@ -34,9 +34,12 @@ export function Screen({
         {
           paddingTop: wide ? 26 : insets.top + 14,
           paddingBottom: wide ? 44 : insets.bottom + 130,
-          paddingHorizontal: wide ? 34 : 20,
-          maxWidth: wide ? 760 : undefined,
+          // Gutters wide enough to read against on a desktop, and the column
+          // centred in the pane instead of hanging off its left edge.
+          paddingHorizontal: wide ? 52 : 20,
+          maxWidth: wide ? 780 : undefined,
           width: '100%',
+          alignSelf: 'center',
           gap,
         },
         style,

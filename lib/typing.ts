@@ -7,9 +7,37 @@
  */
 
 /**
- * Typing polish, applied to the text just entered: two hyphens become an em
- * dash, three dots an ellipsis, and quotes take a side. Only the run ending at
- * the caret is looked at, so older text is never rewritten under the writer.
+ * Arrow shapes, longest first.
+ *
+ * The second half of the table is the same shapes half-converted. Typed a
+ * character at a time, an arrow is built through the glyphs already on screen:
+ * "<-" becomes a left arrow the moment it is typed, so "<-->" arrives as
+ * "\u2190-" and then "\u27f5>", never as the four characters written here. Both
+ * paths have to be caught — the plain shapes for text that arrives at once.
+ *
+ * A long arrow is U+27F6 and its kin, which Figtree and the display face do not
+ * carry; they come from the system font, as any missing glyph does.
+ */
+const ARROWS: [string, string][] = [
+  ['<-->', '\u27f7'],
+  ['<--', '\u27f5'],
+  ['<->', '\u2194'],
+  ['-->', '\u27f6'],
+  ['->', '\u2192'],
+  ['<-', '\u2190'],
+
+  ['\u27f5>', '\u27f7'],
+  ['\u2190->', '\u27f7'],
+  ['\u2190-', '\u27f5'],
+  ['\u2190>', '\u2194'],
+  ['\u2014>', '\u27f6'],
+];
+
+/**
+ * Typing polish, applied to the text just entered: arrows, an em dash for two
+ * hyphens, an ellipsis for three dots, and quotes that take a side. Only the
+ * run ending at the caret is looked at, so older text is never rewritten under
+ * the writer.
  */
 export function typography(text: string, caret: number): { text: string; caret: number } {
   const head = text.slice(0, caret);
@@ -18,6 +46,11 @@ export function typography(text: string, caret: number): { text: string; caret: 
     text: head.slice(0, head.length - cut) + put + tail,
     caret: caret - cut + put.length,
   });
+
+  // Arrows, before the dash rules.
+  for (const [shape, glyph] of ARROWS) {
+    if (head.endsWith(shape)) return swap(shape.length, glyph);
+  }
 
   if (/(^|[^-])--$/.test(head)) return swap(2, '—');
   if (head.endsWith('...')) return swap(3, '…');

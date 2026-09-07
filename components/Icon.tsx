@@ -10,10 +10,12 @@ export type IconName =
   | 'pen'
   | 'check'
   | 'chevronLeft'
+  | 'chevronRight'
   | 'graph'
   | 'trash'
   | 'logout'
-  | 'export';
+  | 'export'
+;
 
 type Props = {
   name: IconName;
@@ -76,6 +78,7 @@ export function Icon({ name, size = 20, color = '#201e1d', strokeWidth = 2.75 }:
       )}
       {name === 'check' && <Path d="M20 6 9 17l-5-5" {...common} />}
       {name === 'chevronLeft' && <Path d="m15 18-6-6 6-6" {...common} />}
+      {name === 'chevronRight' && <Path d="m9 6 6 6-6 6" {...common} />}
       {name === 'graph' && (
         <>
           <Circle cx={18} cy={5} r={3} {...common} />

@@ -31,7 +31,24 @@ export type Block = {
   lang?: string;
   /** Table cells, on 'table' only; the first row is the header. */
   rows?: string[][];
+  /** Nesting level of a list block, two spaces of markdown each. */
+  depth?: number;
 };
+
+/** Kinds that can be nested inside one another. */
+export const LISTS: BlockKind[] = ['bullet', 'number', 'todo'];
+
+/** As deep as a list may go; past this the indents stop reading as structure. */
+export const MAX_DEPTH = 5;
+
+/** Two spaces per level, which is what a nested list looks like in markdown. */
+const INDENT = '  ';
+
+/** How deep a line's leading whitespace puts it. A tab counts as one level. */
+function depthOf(space: string): number {
+  const columns = space.replace(/\t/g, INDENT).length;
+  return Math.min(MAX_DEPTH, Math.floor(columns / INDENT.length));
+}
 
 /** A pipe row: "| a | b |". */
 const ROW = /^\s*\|.*\|\s*$/;
@@ -127,10 +144,17 @@ export function parseDoc(body: string): Block[] {
     else if ((m = /^## (.*)$/.exec(line))) out.push({ kind: 'h2', text: m[1] });
     else if ((m = /^# (.*)$/.exec(line))) out.push({ kind: 'h1', text: m[1] });
     else if ((m = /^> (.*)$/.exec(line))) out.push({ kind: 'quote', text: m[1] });
-    else if ((m = /^- \[([ xX])\] (.*)$/.exec(line)))
-      out.push({ kind: 'todo', text: m[2], done: m[1].toLowerCase() === 'x' });
-    else if ((m = /^[-*] (.*)$/.exec(line))) out.push({ kind: 'bullet', text: m[1] });
-    else if ((m = /^\d+\. (.*)$/.exec(line))) out.push({ kind: 'number', text: m[1] });
+    else if ((m = /^([ \t]*)- \[([ xX])\] (.*)$/.exec(line)))
+      out.push({
+        kind: 'todo',
+        text: m[3],
+        done: m[2].toLowerCase() === 'x',
+        depth: depthOf(m[1]),
+      });
+    else if ((m = /^([ \t]*)[-*] (.*)$/.exec(line)))
+      out.push({ kind: 'bullet', text: m[2], depth: depthOf(m[1]) });
+    else if ((m = /^([ \t]*)\d+\. (.*)$/.exec(line)))
+      out.push({ kind: 'number', text: m[2], depth: depthOf(m[1]) });
     else if (/^(---|\*\*\*)$/.test(line)) out.push({ kind: 'rule', text: '' });
     else out.push({ kind: 'p', text: line });
   }
@@ -140,10 +164,17 @@ export function parseDoc(body: string): Block[] {
 
 export function serializeDoc(blocks: Block[]): string {
   const lines: string[] = [];
-  let counter = 0;
+  /** A running number for each level, so every level counts from one. */
+  const counters: number[] = [];
 
   blocks.forEach((b) => {
-    if (b.kind !== 'number') counter = 0;
+    const depth = Math.max(0, Math.min(MAX_DEPTH, b.depth ?? 0));
+    const pad = LISTS.includes(b.kind) ? INDENT.repeat(depth) : '';
+
+    // A block that is not a list at all ends the count; a list of another kind
+    // only ends the counts deeper than itself.
+    if (!LISTS.includes(b.kind)) counters.length = 0;
+    else counters.length = Math.min(counters.length, depth + 1);
 
     switch (b.kind) {
       case 'h1':
@@ -159,14 +190,14 @@ export function serializeDoc(blocks: Block[]): string {
         lines.push('> ' + b.text);
         break;
       case 'bullet':
-        lines.push('- ' + b.text);
+        lines.push(pad + '- ' + b.text);
         break;
       case 'number':
-        counter += 1;
-        lines.push(`${counter}. ${b.text}`);
+        counters[depth] = (counters[depth] ?? 0) + 1;
+        lines.push(`${pad}${counters[depth]}. ${b.text}`);
         break;
       case 'todo':
-        lines.push(`- [${b.done ? 'x' : ' '}] ${b.text}`);
+        lines.push(`${pad}- [${b.done ? 'x' : ' '}] ${b.text}`);
         break;
       case 'rule':
         lines.push('---');
@@ -217,6 +248,20 @@ export function convertMarker(text: string): Block | null {
   }
 
   return null;
+}
+
+/**
+ * How deep a block may sit, given the one above it.
+ *
+ * A list item can only be one level deeper than the item it hangs under, and
+ * the first item of a list cannot be indented at all — there is nothing above
+ * for it to belong to.
+ */
+export function depthAllowed(blocks: Block[], i: number, want: number): number {
+  if (want <= 0) return 0;
+  const above = blocks[i - 1];
+  if (!above || !LISTS.includes(above.kind)) return 0;
+  return Math.max(0, Math.min(want, MAX_DEPTH, (above.depth ?? 0) + 1));
 }
 
 /** The kind a block made by Return under `block` should have. */

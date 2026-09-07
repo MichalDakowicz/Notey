@@ -151,7 +151,10 @@ function renderBlock(
       return (
         <View key={key} style={styles.list}>
           {block.items.map((item, i) => (
-            <View key={`${key}-i${i}`} style={styles.listRow}>
+            <View
+              key={`${key}-i${i}`}
+              style={[styles.listRow, item.depth > 0 && { marginLeft: item.depth * 18 }]}
+            >
               {item.kind === 'todo' ? (
                 <View style={[styles.box, item.done && styles.boxOn]}>
                   {item.done ? <Text style={styles.boxTick}>✓</Text> : null}

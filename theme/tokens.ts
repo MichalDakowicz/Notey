@@ -75,13 +75,33 @@ export const shadow = {
   },
 } as const;
 
-/** Notebook colour ways, indexed by `notebooks.tint` (0-4). */
+/**
+ * Notebook colour ways, indexed by `notebooks.tint`.
+ *
+ * The index is stored on the row, so the first five keep their places: change
+ * their order and every notebook already filed changes colour. New ways go on
+ * the end.
+ *
+ * `tint` is the blob, `soft` the wash a card sits on, `dark` the text on that
+ * wash. The first five come from the design's own two families; the rest are
+ * mixed to sit on the same paper — each one clears 4.5:1 for its text on its
+ * own wash and on the page, and stays visible against the paper as a dot.
+ */
 export const TINTS = [
   { tint: c.a500, soft: c.a100, dark: c.a700, hex: '#d67f48' },
   { tint: c.g500, soft: c.g100, dark: c.g700, hex: '#8fa073' },
   { tint: c.a700, soft: c.n200, dark: c.a800, hex: '#8c491a' },
   { tint: c.g700, soft: c.g100, dark: c.g800, hex: '#56633f' },
   { tint: c.n500, soft: c.n200, dark: c.n800, hex: '#a19786' },
+
+  // Ochre, eucalyptus, slate, plum, clay rose, periwinkle, coffee.
+  { tint: '#c2992b', soft: '#faf1d8', dark: '#6f5312', hex: '#c2992b' },
+  { tint: '#4f8a80', soft: '#e4f1ee', dark: '#2c574f', hex: '#4f8a80' },
+  { tint: '#5f7794', soft: '#e9eff7', dark: '#33475e', hex: '#5f7794' },
+  { tint: '#8a5a78', soft: '#f6ebf3', dark: '#57324d', hex: '#8a5a78' },
+  { tint: '#c07370', soft: '#fceae8', dark: '#7a3a37', hex: '#c07370' },
+  { tint: '#7b76a8', soft: '#eeedf9', dark: '#46426d', hex: '#7b76a8' },
+  { tint: '#8a6b4f', soft: '#f4ece1', dark: '#513c29', hex: '#8a6b4f' },
 ] as const;
 
 export const tintOf = (i: number) => TINTS[((i % TINTS.length) + TINTS.length) % TINTS.length];

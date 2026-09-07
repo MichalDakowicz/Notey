@@ -19,6 +19,8 @@ export type ListItem = {
   marker: string;
   done: boolean;
   kids: Inline[];
+  /** Nesting level, two spaces of markdown each. */
+  depth: number;
 };
 
 export type Block =
@@ -136,6 +138,11 @@ export function parseInline(src: string, mentions: Mentionable[] = []): Inline[]
   return out;
 }
 
+/** How deep a list line's leading whitespace puts it; a tab is one level. */
+function indentOf(space: string): number {
+  return Math.min(5, Math.floor(space.replace(/\t/g, '  ').length / 2));
+}
+
 const PIPE_ROW = /^\s*\|.*\|\s*$/;
 const RULE_CELL = /^:?-+:?$/;
 
@@ -214,24 +221,37 @@ export function parseBlocks(lines: string[], mentions: Mentionable[] = []): Bloc
 
     let m: RegExpExecArray | null;
 
-    if ((m = /^- \[( |x|X)\] (.*)$/.exec(s))) {
+    if ((m = /^([ \t]*)- \[( |x|X)\] (.*)$/.exec(s))) {
       items = items ?? [];
       items.push({
         kind: 'todo',
         marker: '',
-        done: m[1].toLowerCase() === 'x',
-        kids: parseInline(m[2], mentions),
+        done: m[2].toLowerCase() === 'x',
+        kids: parseInline(m[3], mentions),
+        depth: indentOf(m[1]),
       });
       continue;
     }
-    if ((m = /^[-*] (.*)$/.exec(s))) {
+    if ((m = /^([ \t]*)[-*] (.*)$/.exec(s))) {
       items = items ?? [];
-      items.push({ kind: 'bullet', marker: '•', done: false, kids: parseInline(m[1], mentions) });
+      items.push({
+        kind: 'bullet',
+        marker: '\u2022',
+        done: false,
+        kids: parseInline(m[2], mentions),
+        depth: indentOf(m[1]),
+      });
       continue;
     }
-    if ((m = /^(\d+)\. (.*)$/.exec(s))) {
+    if ((m = /^([ \t]*)(\d+)\. (.*)$/.exec(s))) {
       items = items ?? [];
-      items.push({ kind: 'number', marker: m[1] + '.', done: false, kids: parseInline(m[2], mentions) });
+      items.push({
+        kind: 'number',
+        marker: m[2] + '.',
+        done: false,
+        kids: parseInline(m[3], mentions),
+        depth: indentOf(m[1]),
+      });
       continue;
     }
 
