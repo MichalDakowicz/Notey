@@ -1,0 +1,230 @@
+/**
+ * The block model behind the editor.
+ *
+ * Notes are stored as markdown, but while a note is open it is a list of
+ * blocks: a heading knows it is a heading, and its "## " lives in the block's
+ * kind rather than in the text being typed. That is what lets the marker
+ * disappear the moment it is typed and the line take its real shape, without
+ * any of the caret arithmetic that comes from hiding characters inside a field.
+ */
+
+export type BlockKind =
+  | 'table'
+  | 'p'
+  | 'h1'
+  | 'h2'
+  | 'h3'
+  | 'quote'
+  | 'bullet'
+  | 'number'
+  | 'todo'
+  | 'rule'
+  | 'fence';
+
+export type Block = {
+  kind: BlockKind;
+  /** Block content with no marker: "Why" for "## Why". Code for a fence. */
+  text: string;
+  /** Checkbox state, on 'todo' only. */
+  done?: boolean;
+  /** Fence language, on 'fence' only. */
+  lang?: string;
+  /** Table cells, on 'table' only; the first row is the header. */
+  rows?: string[][];
+};
+
+/** A pipe row: "| a | b |". */
+const ROW = /^\s*\|.*\|\s*$/;
+/** A cell of the rule under a table's header: "---", ":-:", "--:". */
+const RULE_CELL = /^:?-+:?$/;
+
+/** A pipe inside a cell is written with a backslash, as in markdown. */
+const ESC = String.fromCharCode(92);
+
+/** Split a pipe row into cells, honouring an escaped pipe inside one. */
+function cellsOf(line: string): string[] {
+  const inner = line.trim().replace(/^\|/, '').replace(/\|\s*$/, '');
+  const cells: string[] = [];
+  let cell = '';
+  for (let i = 0; i < inner.length; i += 1) {
+    if (inner[i] === ESC && inner[i + 1] === '|') {
+      cell += '|';
+      i += 1;
+      continue;
+    }
+    if (inner[i] === '|') {
+      cells.push(cell.trim());
+      cell = '';
+      continue;
+    }
+    cell += inner[i];
+  }
+  cells.push(cell.trim());
+  return cells;
+}
+
+/**
+ * Is this the rule under a table's header?
+ *
+ * Every cell has to be dashes. Testing the whole line for "spaces, pipes and
+ * dashes" instead would swallow a row of empty cells, "|   |   |", and the
+ * table would end at its header.
+ */
+function isRule(line: string): boolean {
+  if (!ROW.test(line)) return false;
+  const cells = cellsOf(line);
+  return cells.length > 0 && cells.every((cell) => RULE_CELL.test(cell));
+}
+
+function rowOf(cells: string[]): string {
+  const body = cells.map((cell) => (cell || ' ').split('|').join(ESC + '|')).join(' | ');
+  return '| ' + body + ' |';
+}
+/** Every row padded to the widest, so the markdown is a rectangle. */
+export function evenRows(rows: string[][]): string[][] {
+  const width = Math.max(1, ...rows.map((r) => r.length));
+  return rows.map((r) => Array.from({ length: width }, (_, i) => r[i] ?? ''));
+}
+
+/** Kinds that carry their marker onto the next block when Return is pressed. */
+export const CARRIES: BlockKind[] = ['bullet', 'number', 'todo', 'quote'];
+
+export function parseDoc(body: string): Block[] {
+  const lines = body.split('\n');
+  const out: Block[] = [];
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i] ?? '';
+    const fence = /^```(.*)$/.exec(line);
+
+    if (fence) {
+      const code: string[] = [];
+      let j = i + 1;
+      while (j < lines.length && !/^```/.test(lines[j] ?? '')) {
+        code.push(lines[j] ?? '');
+        j += 1;
+      }
+      out.push({ kind: 'fence', lang: fence[1].trim(), text: code.join('\n') });
+      i = j;
+      continue;
+    }
+
+    // A table is a pipe row with the header rule under it.
+    if (ROW.test(line) && isRule(lines[i + 1] ?? '')) {
+      const rows: string[][] = [cellsOf(line)];
+      let j = i + 2;
+      while (j < lines.length && ROW.test(lines[j] ?? '') && !isRule(lines[j] ?? '')) {
+        rows.push(cellsOf(lines[j] ?? ''));
+        j += 1;
+      }
+      out.push({ kind: 'table', text: '', rows: evenRows(rows) });
+      i = j - 1;
+      continue;
+    }
+
+    let m: RegExpExecArray | null;
+    if ((m = /^### (.*)$/.exec(line))) out.push({ kind: 'h3', text: m[1] });
+    else if ((m = /^## (.*)$/.exec(line))) out.push({ kind: 'h2', text: m[1] });
+    else if ((m = /^# (.*)$/.exec(line))) out.push({ kind: 'h1', text: m[1] });
+    else if ((m = /^> (.*)$/.exec(line))) out.push({ kind: 'quote', text: m[1] });
+    else if ((m = /^- \[([ xX])\] (.*)$/.exec(line)))
+      out.push({ kind: 'todo', text: m[2], done: m[1].toLowerCase() === 'x' });
+    else if ((m = /^[-*] (.*)$/.exec(line))) out.push({ kind: 'bullet', text: m[1] });
+    else if ((m = /^\d+\. (.*)$/.exec(line))) out.push({ kind: 'number', text: m[1] });
+    else if (/^(---|\*\*\*)$/.test(line)) out.push({ kind: 'rule', text: '' });
+    else out.push({ kind: 'p', text: line });
+  }
+
+  return out.length ? out : [{ kind: 'p', text: '' }];
+}
+
+export function serializeDoc(blocks: Block[]): string {
+  const lines: string[] = [];
+  let counter = 0;
+
+  blocks.forEach((b) => {
+    if (b.kind !== 'number') counter = 0;
+
+    switch (b.kind) {
+      case 'h1':
+        lines.push('# ' + b.text);
+        break;
+      case 'h2':
+        lines.push('## ' + b.text);
+        break;
+      case 'h3':
+        lines.push('### ' + b.text);
+        break;
+      case 'quote':
+        lines.push('> ' + b.text);
+        break;
+      case 'bullet':
+        lines.push('- ' + b.text);
+        break;
+      case 'number':
+        counter += 1;
+        lines.push(`${counter}. ${b.text}`);
+        break;
+      case 'todo':
+        lines.push(`- [${b.done ? 'x' : ' '}] ${b.text}`);
+        break;
+      case 'rule':
+        lines.push('---');
+        break;
+      case 'table': {
+        const rows = evenRows(b.rows?.length ? b.rows : [['', '']]);
+        lines.push(rowOf(rows[0]));
+        lines.push('| ' + rows[0].map(() => '---').join(' | ') + ' |');
+        rows.slice(1).forEach((r) => lines.push(rowOf(r)));
+        break;
+      }
+      case 'fence':
+        lines.push('```' + (b.lang ?? ''), ...(b.text.length ? b.text.split('\n') : ['']), '```');
+        break;
+      default:
+        lines.push(b.text);
+    }
+  });
+
+  return lines.join('\n');
+}
+
+/**
+ * A marker typed at the head of a block, and what the block becomes. Returns
+ * null when the text is not a conversion, so the keystroke is left alone.
+ */
+export function convertMarker(text: string): Block | null {
+  let m: RegExpExecArray | null;
+
+  if ((m = /^### (.*)$/.exec(text))) return { kind: 'h3', text: m[1] };
+  if ((m = /^## (.*)$/.exec(text))) return { kind: 'h2', text: m[1] };
+  if ((m = /^# (.*)$/.exec(text))) return { kind: 'h1', text: m[1] };
+  if ((m = /^> (.*)$/.exec(text))) return { kind: 'quote', text: m[1] };
+  if ((m = /^(?:- )?\[([ xX])?\] (.*)$/.exec(text)))
+    return { kind: 'todo', text: m[2], done: (m[1] ?? '').toLowerCase() === 'x' };
+  if ((m = /^[-*] (.*)$/.exec(text))) return { kind: 'bullet', text: m[1] };
+  if ((m = /^\d+\. (.*)$/.exec(text))) return { kind: 'number', text: m[1] };
+  if (/^(---|\*\*\*)$/.test(text)) return { kind: 'rule', text: '' };
+  if ((m = /^```(.*)$/.exec(text))) return { kind: 'fence', text: '', lang: m[1].trim() };
+  // "||" is a two-column table, "|||" a three-column one, and so on.
+  if ((m = /^(\|{2,})$/.exec(text))) {
+    const width = m[1].length;
+    return {
+      kind: 'table',
+      text: '',
+      rows: [Array(width).fill(''), Array(width).fill('')],
+    };
+  }
+
+  return null;
+}
+
+/** The kind a block made by Return under `block` should have. */
+export function nextKind(block: Block): BlockKind {
+  return CARRIES.includes(block.kind) ? block.kind : 'p';
+}
+
+/** A block with nothing in it that is not a plain paragraph, i.e. one Return from leaving. */
+export function isEmptyMarked(block: Block): boolean {
+  return block.kind !== 'p' && block.kind !== 'rule' && !block.text.trim();
+}

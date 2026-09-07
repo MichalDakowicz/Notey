@@ -1,0 +1,89 @@
+/**
+ * Rules that fire while text is being typed inside a block: quote and dash
+ * polish, the inline marks the selection bar applies, and the slash list.
+ *
+ * Block shape itself lives in ./doc — this file only ever sees the text of one
+ * block.
+ */
+
+/**
+ * Typing polish, applied to the text just entered: two hyphens become an em
+ * dash, three dots an ellipsis, and quotes take a side. Only the run ending at
+ * the caret is looked at, so older text is never rewritten under the writer.
+ */
+export function typography(text: string, caret: number): { text: string; caret: number } {
+  const head = text.slice(0, caret);
+  const tail = text.slice(caret);
+  const swap = (cut: number, put: string) => ({
+    text: head.slice(0, head.length - cut) + put + tail,
+    caret: caret - cut + put.length,
+  });
+
+  if (/(^|[^-])--$/.test(head)) return swap(2, '—');
+  if (head.endsWith('...')) return swap(3, '…');
+
+  if (head.endsWith('"')) {
+    const before = head[head.length - 2];
+    return swap(1, before === undefined || /[\s([{—]/.test(before) ? '“' : '”');
+  }
+  if (head.endsWith("'")) {
+    const before = head[head.length - 2];
+    return swap(1, before !== undefined && /[\w)\]}]/.test(before) ? '’' : '‘');
+  }
+
+  return { text, caret };
+}
+
+export type SlashItem = {
+  key: string;
+  label: string;
+  /** The marker the block is usually made with, shown as a hint. */
+  badge: string;
+  /** Words the query is matched against, on top of the label. */
+  also?: string;
+};
+
+export const SLASH_ITEMS: SlashItem[] = [
+  { key: 'h1', label: 'Big heading', badge: '#', also: 'title h1' },
+  { key: 'h2', label: 'Heading', badge: '##', also: 'h2 section' },
+  { key: 'h3', label: 'Small heading', badge: '###', also: 'h3' },
+  { key: 'bullet', label: 'Bullet list', badge: '-', also: 'ul item' },
+  { key: 'number', label: 'Numbered list', badge: '1.', also: 'ol ordered' },
+  { key: 'todo', label: 'Checkbox', badge: '[ ]', also: 'task todo' },
+  { key: 'quote', label: 'Quote', badge: '>', also: 'blockquote' },
+  { key: 'code', label: 'Code block', badge: '```', also: 'fence' },
+  { key: 'table', label: 'Table', badge: '⊞', also: 'grid rows columns' },
+  { key: 'rule', label: 'Divider', badge: '—', also: 'hr line break' },
+];
+
+/** The slash query when the block holds nothing but a slash command, else null. */
+export function slashQuery(text: string): string | null {
+  const m = /^\/([a-z0-9 ]*)$/i.exec(text);
+  return m ? m[1].trim().toLowerCase() : null;
+}
+
+export function slashHits(query: string): SlashItem[] {
+  if (!query) return SLASH_ITEMS;
+  return SLASH_ITEMS.filter((it) =>
+    `${it.label} ${it.key} ${it.also ?? ''}`.toLowerCase().includes(query),
+  );
+}
+
+/** Indent carried onto the next line inside a code block. */
+export function codeIndent(code: string, caret: number): string {
+  const upto = code.slice(0, caret);
+  const line = upto.slice(upto.lastIndexOf('\n') + 1);
+  const indent = /^[ \t]*/.exec(line)?.[0] ?? '';
+  return /[[{(:]$/.test(line.trim()) ? indent + '  ' : indent;
+}
+
+/**
+ * Where the caret ends up after a change, worked out from the two strings:
+ * `onChangeText` fires before `onSelectionChange`, so the field cannot be
+ * asked.
+ */
+export function caretAfterChange(prev: string, next: string): number {
+  let k = 0;
+  while (k < prev.length && k < next.length && prev[k] === next[k]) k += 1;
+  return k + Math.max(0, next.length - prev.length);
+}
