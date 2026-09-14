@@ -113,6 +113,12 @@ function renderBlock(
           {renderInline(block.kids, h, key)}
         </Text>
       );
+    case 'h4':
+      return (
+        <Text key={key} style={styles.h4}>
+          {renderInline(block.kids, h, key)}
+        </Text>
+      );
     case 'quote':
       return (
         <View key={key} style={styles.quote}>
@@ -216,6 +222,15 @@ const styles = StyleSheet.create({
     color: c.text,
     marginTop: 16,
     marginBottom: 6,
+  },
+  h4: {
+    fontFamily: f.b800,
+    fontSize: 13,
+    lineHeight: 19,
+    letterSpacing: 0.3,
+    color: c.n700,
+    marginTop: 14,
+    marginBottom: 5,
   },
   p: {
     fontFamily: f.b400,

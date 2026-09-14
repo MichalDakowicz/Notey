@@ -10,6 +10,7 @@ import { StyleSheet, type TextStyle } from 'react-native';
 
 import { putCaret, readRange } from '../lib/caret';
 import type { Marks, Run } from '../lib/rich';
+import { tabText } from '../lib/typing';
 import { c, f } from '../theme/tokens';
 import type { LiveFieldHandle, LiveFieldProps } from './LiveField';
 import { useLiveBlock } from './useLiveBlock';
@@ -209,9 +210,19 @@ export const LiveField = forwardRef<LiveFieldHandle, LiveFieldProps>(function Li
       return;
     }
 
-    if (e.key === 'Tab' && onTab) {
+    // Tab belongs to the editor, never to the browser: letting the default
+    // through walks the focus out of the note, which loses the caret. It nests
+    // a list item or steps a table cell where there is one to step to, and
+    // anywhere else it is a tab in the text.
+    if (e.key === 'Tab') {
       e.preventDefault();
-      onTab(e.shiftKey);
+      if (onTab?.(e.shiftKey)) return;
+      const at = range ?? { start: plain.length, end: plain.length };
+      const put = tabText(plain, at.start, at.end, e.shiftKey);
+      if (!put) return;
+      const typed = block.type(put.text);
+      want.current = typed.caret;
+      onContext(typed.plain, typed.caret);
       return;
     }
 
@@ -349,6 +360,7 @@ const FIELD_CSS: React.CSSProperties = {
   outline: 'none',
   whiteSpace: 'pre-wrap',
   overflowWrap: 'anywhere',
+  tabSize: 4,
   minHeight: 25,
   caretColor: c.accent,
 };

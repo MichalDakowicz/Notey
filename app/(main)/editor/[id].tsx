@@ -21,6 +21,8 @@ import { SlashMenu, type CaretSpot } from '../../../components/SlashMenu';
 import { Empty, Screen } from '../../../components/ui';
 import {
   convertMarker,
+  COUNTED,
+  countedMarkers,
   depthAllowed,
   evenRows,
   isEmptyMarked,
@@ -39,6 +41,7 @@ import { useStore } from '../../../lib/store';
 import {
   caretAfterChange,
   codeIndent,
+  codeTab,
   slashHits,
   slashQuery,
   type SlashItem,
@@ -74,6 +77,8 @@ export default function Editor() {
 
   const note = noteById(id);
   const blocks = useMemo(() => parseDoc(note?.body ?? ''), [note?.body]);
+  /** "3." or "c." per block, worked out by the same walk the markdown uses. */
+  const markers = useMemo(() => countedMarkers(blocks), [blocks]);
   const mentionTitles = useMemo(() => mentionables.map((m) => m.title), [mentionables]);
   const title = useFittedDisplaySize(note?.title ?? '', 27, 17);
 
@@ -233,21 +238,22 @@ export default function Editor() {
    * Tab walks the cells in reading order; from the last one it adds a row, so a
    * table can be filled without ever reaching for the mouse.
    */
-  function cellTab(i: number, r: number, c: number, back: boolean) {
+  function cellTab(i: number, r: number, c: number, back: boolean): boolean {
     const rows = cellsOf(blocks[i]);
     const width = rows[0].length;
     const at = r * width + c + (back ? -1 : 1);
 
     if (at < 0) {
       focusBlock(Math.max(0, i - 1));
-      return;
+      return true;
     }
     if (at >= rows.length * width) {
       shapeTable(i, [...rows.map((row) => [...row]), rows[0].map(() => '')], rows.length, 0);
-      return;
+      return true;
     }
     const target = { r: Math.floor(at / width), c: at % width };
     focusCell(i, target.r, target.c, (rows[target.r][target.c] ?? '').length);
+    return true;
   }
 
   /** Up and down step between rows, staying in the column. */
@@ -286,6 +292,7 @@ export default function Editor() {
    * Tab nests a list item under the one above it, Shift+Tab lifts it back out.
    * The rules live in the model: an item can only be one level deeper than the
    * item it hangs under, and the first item of a list has nothing to hang under.
+   *
    */
   function nest(i: number, back: boolean) {
     const block = blocks[i];
@@ -397,6 +404,8 @@ export default function Editor() {
           lang: converted.kind === 'fence' ? (converted.lang ?? '') : undefined,
           // A list that becomes another kind of list stays where it sits.
           depth: LISTS.includes(converted.kind) ? (block.depth ?? 0) : undefined,
+          // "b. " starts the list at b, and any other shape drops the count.
+          start: COUNTED.includes(converted.kind) ? converted.start : undefined,
           rows: converted.rows,
         },
         Math.max(0, caret - cut),
@@ -468,7 +477,7 @@ export default function Editor() {
     }
 
     if (block.kind !== 'p') {
-      replace(i, { kind: 'p', done: undefined, lang: undefined }, 0);
+      replace(i, { kind: 'p', done: undefined, lang: undefined, start: undefined }, 0);
       return;
     }
     if (i === 0) return;
@@ -505,9 +514,13 @@ export default function Editor() {
   function onCodeKey(e: NativeSyntheticEvent<TextInputKeyPressEventData>, i: number) {
     const key = e.nativeEvent.key;
     if (key === 'Tab') {
+      // On web the browser would walk the focus out of the note instead.
+      e.preventDefault?.();
       const { start, end } = sel.current;
-      const text = blocks[i].text;
-      replace(i, { text: text.slice(0, start) + '  ' + text.slice(end) }, start + 2);
+      // Shift lives on the DOM event behind the web field; a phone has none.
+      const back = !!(e.nativeEvent as { shiftKey?: boolean }).shiftKey;
+      const tabbed = codeTab(blocks[i].text, start, end, back);
+      if (tabbed.text !== blocks[i].text) replace(i, { text: tabbed.text }, tabbed.caret);
       return;
     }
     if (key === 'Backspace' && sel.current.start === 0 && sel.current.end === 0 && !blocks[i].text) {
@@ -558,6 +571,7 @@ export default function Editor() {
         text: '',
         done: kind === 'todo' ? false : undefined,
         lang: kind === 'fence' ? '' : undefined,
+        start: undefined,
       },
       0,
     );
@@ -594,8 +608,6 @@ export default function Editor() {
   copyRef.current = copySpan;
 
   const panelBottom = keyboard ? keyboard + 12 : insets.bottom + 96;
-  /** A running number per level, so every level counts from one on screen too. */
-  const counters: number[] = [];
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
@@ -646,16 +658,6 @@ export default function Editor() {
 
         <View style={{ gap: 3 }}>
           {blocks.map((block, i) => {
-            const depth = block.depth ?? 0;
-            if (!LISTS.includes(block.kind)) counters.length = 0;
-            else counters.length = Math.min(counters.length, depth + 1);
-
-            let number = 0;
-            if (block.kind === 'number') {
-              counters[depth] = (counters[depth] ?? 0) + 1;
-              number = counters[depth];
-            }
-
             const held = !!spanBounds && i >= spanBounds.lo && i <= spanBounds.hi;
 
             if (block.kind === 'rule') {
@@ -840,7 +842,7 @@ export default function Editor() {
               >
                 <Prefix
                   block={block}
-                  number={number}
+                  marker={markers[i]}
                   onToggle={() => replace(i, { done: !block.done }, sel.current.start)}
                 />
                 <LiveField
@@ -864,7 +866,11 @@ export default function Editor() {
                   onBackspaceAtStart={() => onBackspaceAtStart(i)}
                   onCaretSpot={setSpot}
                   blockId={String(i)}
-                  onTab={LISTS.includes(block.kind) ? (back) => nest(i, back) : undefined}
+                  onTab={(back) => {
+                    if (!LISTS.includes(block.kind)) return false;
+                    nest(i, back);
+                    return true;
+                  }}
                   onCross={(dir) => crossTo(i, dir)}
                   onSelectAcross={(dir) => growSpan(i, dir)}
                   // Arrows only belong to the editor while the menu is open;
@@ -903,15 +909,22 @@ export default function Editor() {
           <Text style={{ fontFamily: f.b800 }}>--&gt;</Text> for arrows, short and long, the same
           backwards and both ways,{' '}
           <Text style={{ fontFamily: f.b800 }}>==marked==</Text>. At the head of a block,{' '}
-          <Text style={{ fontFamily: f.b800 }}>##</Text> makes a heading,{' '}
+          <Text style={{ fontFamily: f.b800 }}>##</Text> makes a heading (down to{' '}
+          <Text style={{ fontFamily: f.b800 }}>####</Text>),{' '}
           <Text style={{ fontFamily: f.b800 }}>-</Text> a bullet,{' '}
+          <Text style={{ fontFamily: f.b800 }}>1.</Text> a numbered list,{' '}
+          <Text style={{ fontFamily: f.b800 }}>a.</Text> a lettered one — either starts where its
+          marker says, so <Text style={{ fontFamily: f.b800 }}>c.</Text> or{' '}
+          <Text style={{ fontFamily: f.b800 }}>4.</Text> picks a list back up after something in
+          between —{' '}
           <Text style={{ fontFamily: f.b800 }}>[]</Text> a checkbox.{' '}
           <Text style={{ fontFamily: f.b800 }}>/</Text> picks a block and{' '}
           <Text style={{ fontFamily: f.b800 }}>||</Text> starts a table (one pipe per column),{' '}
           <Text style={{ fontFamily: f.b800 }}>@</Text> links a note. In a table, Tab walks the
           cells and adds a row at the end, the arrows step between rows, and Backspace in an empty
-          one throws the table away. Tab nests a list item under the one above it and Shift+Tab lifts it
-          back out. Backspace at the head of a block clears its shape. The arrows
+          one throws the table away. Tab nests a list item under the one above it and Shift+Tab
+          lifts it back out; anywhere else — a paragraph, a heading, a code block — it puts a
+          tab in the text, and it never walks the focus out of the note. Backspace at the head of a block clears its shape. The arrows
           walk the lines and carry on into the next block; hold Shift with them to take whole
           blocks, then Copy or Delete.
         </Text>
@@ -991,18 +1004,19 @@ function TableButton({
   );
 }
 
-/** Bullet, number or checkbox drawn beside the block rather than inside it. */
+/** Bullet, number, letter or checkbox drawn beside the block, not inside it. */
 function Prefix({
   block,
-  number,
+  marker,
   onToggle,
 }: {
   block: Block;
-  number: number;
+  /** The counted marker for a numbered or lettered item, "3." or "c.". */
+  marker: string;
   onToggle: () => void;
 }) {
   if (block.kind === 'bullet') return <Text style={styles.bullet}>•</Text>;
-  if (block.kind === 'number') return <Text style={styles.number}>{number}.</Text>;
+  if (COUNTED.includes(block.kind)) return <Text style={styles.number}>{marker}</Text>;
   if (block.kind === 'todo') {
     return (
       <Pressable onPress={onToggle} hitSlop={8} style={[styles.box, block.done && styles.boxOn]}>
@@ -1018,8 +1032,10 @@ const SLASH_KIND: Record<string, BlockKind | undefined> = {
   h1: 'h1',
   h2: 'h2',
   h3: 'h3',
+  h4: 'h4',
   bullet: 'bullet',
   number: 'number',
+  alpha: 'alpha',
   todo: 'todo',
   quote: 'quote',
   code: 'fence',
@@ -1031,9 +1047,11 @@ const PLACEHOLDER: Partial<Record<BlockKind, string>> = {
   h1: 'Heading',
   h2: 'Heading',
   h3: 'Heading',
+  h4: 'Heading',
   quote: 'Quote',
   bullet: 'List item',
   number: 'List item',
+  alpha: 'List item',
   todo: 'To do',
 };
 
@@ -1042,6 +1060,7 @@ const FIELD: Partial<Record<BlockKind, object>> = {
   h1: { fontFamily: f.head, fontSize: 23, lineHeight: 31, color: c.text },
   h2: { fontFamily: f.head, fontSize: 19, lineHeight: 27, color: c.text },
   h3: { fontFamily: f.b800, fontSize: 15.5, lineHeight: 24, color: c.text },
+  h4: { fontFamily: f.b800, fontSize: 13.5, lineHeight: 22, letterSpacing: 0.3, color: c.n700 },
   quote: { fontFamily: f.b400, fontSize: 14.5, lineHeight: 23, color: c.g800 },
 };
 

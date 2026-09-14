@@ -14,9 +14,11 @@ export type BlockKind =
   | 'h1'
   | 'h2'
   | 'h3'
+  | 'h4'
   | 'quote'
   | 'bullet'
   | 'number'
+  | 'alpha'
   | 'todo'
   | 'rule'
   | 'fence';
@@ -33,10 +35,84 @@ export type Block = {
   rows?: string[][];
   /** Nesting level of a list block, two spaces of markdown each. */
   depth?: number;
+  /**
+   * What a counted item starts its run at, 1 being "1." and "a.".
+   *
+   * Only the item that heads a run carries one, and only when it was written
+   * with a marker of its own: a list started at "b." or at "3." stays there,
+   * and a run picked up again after a paragraph carries on from where the last
+   * one left off. The items after the head are counted from it, so inserting
+   * one shifts the rest.
+   */
+  start?: number;
 };
 
 /** Kinds that can be nested inside one another. */
-export const LISTS: BlockKind[] = ['bullet', 'number', 'todo'];
+export const LISTS: BlockKind[] = ['bullet', 'number', 'alpha', 'todo'];
+
+/** List kinds whose marker is counted, so each level counts from its own start. */
+export const COUNTED: BlockKind[] = ['number', 'alpha'];
+
+/**
+ * The letter for a lettered item: a, b, ... z, aa, ab. Spreadsheet lettering,
+ * so a list longer than the alphabet carries on instead of starting over.
+ */
+export function letterOf(n: number): string {
+  let out = '';
+  let left = Math.max(1, n);
+  while (left > 0) {
+    out = String.fromCharCode(97 + ((left - 1) % 26)) + out;
+    left = Math.floor((left - 1) / 26);
+  }
+  return out;
+}
+
+/** The place in the alphabet a lettered marker names: a is 1, aa is 27. */
+export function letterIndex(letters: string): number {
+  let out = 0;
+  for (const ch of letters.toLowerCase()) {
+    out = out * 26 + (ch.charCodeAt(0) - 96);
+  }
+  return Math.max(1, out);
+}
+
+/**
+ * The marker each block draws, "" for anything not counted.
+ *
+ * The count lives here rather than in the serializer so the letters on screen
+ * and the letters in the markdown are worked out exactly once, the same way.
+ */
+export function countedMarkers(blocks: Block[]): string[] {
+  /** Where each level has counted to, undefined for a level not counting. */
+  const counters: (number | undefined)[] = [];
+  /** What each level is counting, so numbers and letters never share a count. */
+  const kinds: (BlockKind | undefined)[] = [];
+
+  return blocks.map((b) => {
+    const depth = Math.max(0, Math.min(MAX_DEPTH, b.depth ?? 0));
+
+    // A block that is no kind of list ends every count; a list only ends the
+    // counts deeper than itself.
+    if (!LISTS.includes(b.kind)) {
+      counters.length = 0;
+      kinds.length = 0;
+      return '';
+    }
+    counters.length = Math.min(counters.length, depth + 1);
+    kinds.length = Math.min(kinds.length, depth + 1);
+
+    const carries = kinds[depth] === b.kind && counters[depth] !== undefined;
+    kinds[depth] = b.kind;
+    if (!COUNTED.includes(b.kind)) {
+      counters[depth] = undefined;
+      return '';
+    }
+
+    const at = carries ? (counters[depth] as number) + 1 : Math.max(1, b.start ?? 1);
+    counters[depth] = at;
+    return (b.kind === 'alpha' ? letterOf(at) : String(at)) + '.';
+  });
+}
 
 /** As deep as a list may go; past this the indents stop reading as structure. */
 export const MAX_DEPTH = 5;
@@ -104,7 +180,7 @@ export function evenRows(rows: string[][]): string[][] {
 }
 
 /** Kinds that carry their marker onto the next block when Return is pressed. */
-export const CARRIES: BlockKind[] = ['bullet', 'number', 'todo', 'quote'];
+export const CARRIES: BlockKind[] = ['bullet', 'number', 'alpha', 'todo', 'quote'];
 
 export function parseDoc(body: string): Block[] {
   const lines = body.split('\n');
@@ -140,7 +216,27 @@ export function parseDoc(body: string): Block[] {
     }
 
     let m: RegExpExecArray | null;
-    if ((m = /^### (.*)$/.exec(line))) out.push({ kind: 'h3', text: m[1] });
+    /**
+     * The marker a counted item was written with, kept when this item heads a
+     * run: a list that starts at "b." is not quietly moved back to "a.".
+     */
+    const startsAt = (kind: BlockKind, depth: number, at: number) => {
+      const above = out[out.length - 1];
+      const heads = !above || above.kind !== kind || (above.depth ?? 0) !== depth;
+      return heads ? at : undefined;
+    };
+
+    // A lettered marker. One letter is a list on its own; two only carry a
+    // list past "z", so "cf. see below" stays the sentence it is.
+    const letters = /^([ \t]*)([a-z]{1,2})\. (.*)$/.exec(line);
+    const lettered =
+      letters &&
+      (letters[2].length === 1 ||
+        (out[out.length - 1]?.kind === 'alpha' &&
+          (out[out.length - 1]?.depth ?? 0) === depthOf(letters[1])));
+
+    if ((m = /^#### (.*)$/.exec(line))) out.push({ kind: 'h4', text: m[1] });
+    else if ((m = /^### (.*)$/.exec(line))) out.push({ kind: 'h3', text: m[1] });
     else if ((m = /^## (.*)$/.exec(line))) out.push({ kind: 'h2', text: m[1] });
     else if ((m = /^# (.*)$/.exec(line))) out.push({ kind: 'h1', text: m[1] });
     else if ((m = /^> (.*)$/.exec(line))) out.push({ kind: 'quote', text: m[1] });
@@ -153,8 +249,26 @@ export function parseDoc(body: string): Block[] {
       });
     else if ((m = /^([ \t]*)[-*] (.*)$/.exec(line)))
       out.push({ kind: 'bullet', text: m[2], depth: depthOf(m[1]) });
-    else if ((m = /^([ \t]*)\d+\. (.*)$/.exec(line)))
-      out.push({ kind: 'number', text: m[2], depth: depthOf(m[1]) });
+    else if ((m = /^([ \t]*)(\d+)\. (.*)$/.exec(line))) {
+      const depth = depthOf(m[1]);
+      out.push({
+        kind: 'number',
+        text: m[3],
+        depth,
+        start: startsAt('number', depth, Number.parseInt(m[2], 10)),
+      });
+    }
+    // Markdown has no shape for a lettered item, so this is our own dialect:
+    // read back the same way it is written out.
+    else if (letters && lettered) {
+      const depth = depthOf(letters[1]);
+      out.push({
+        kind: 'alpha',
+        text: letters[3],
+        depth,
+        start: startsAt('alpha', depth, letterIndex(letters[2])),
+      });
+    }
     else if (/^(---|\*\*\*)$/.test(line)) out.push({ kind: 'rule', text: '' });
     else out.push({ kind: 'p', text: line });
   }
@@ -164,17 +278,11 @@ export function parseDoc(body: string): Block[] {
 
 export function serializeDoc(blocks: Block[]): string {
   const lines: string[] = [];
-  /** A running number for each level, so every level counts from one. */
-  const counters: number[] = [];
+  const markers = countedMarkers(blocks);
 
-  blocks.forEach((b) => {
+  blocks.forEach((b, i) => {
     const depth = Math.max(0, Math.min(MAX_DEPTH, b.depth ?? 0));
     const pad = LISTS.includes(b.kind) ? INDENT.repeat(depth) : '';
-
-    // A block that is not a list at all ends the count; a list of another kind
-    // only ends the counts deeper than itself.
-    if (!LISTS.includes(b.kind)) counters.length = 0;
-    else counters.length = Math.min(counters.length, depth + 1);
 
     switch (b.kind) {
       case 'h1':
@@ -186,6 +294,9 @@ export function serializeDoc(blocks: Block[]): string {
       case 'h3':
         lines.push('### ' + b.text);
         break;
+      case 'h4':
+        lines.push('#### ' + b.text);
+        break;
       case 'quote':
         lines.push('> ' + b.text);
         break;
@@ -193,8 +304,8 @@ export function serializeDoc(blocks: Block[]): string {
         lines.push(pad + '- ' + b.text);
         break;
       case 'number':
-        counters[depth] = (counters[depth] ?? 0) + 1;
-        lines.push(`${pad}${counters[depth]}. ${b.text}`);
+      case 'alpha':
+        lines.push(`${pad}${markers[i]} ${b.text}`);
         break;
       case 'todo':
         lines.push(`${pad}- [${b.done ? 'x' : ' '}] ${b.text}`);
@@ -227,6 +338,7 @@ export function serializeDoc(blocks: Block[]): string {
 export function convertMarker(text: string): Block | null {
   let m: RegExpExecArray | null;
 
+  if ((m = /^#### (.*)$/.exec(text))) return { kind: 'h4', text: m[1] };
   if ((m = /^### (.*)$/.exec(text))) return { kind: 'h3', text: m[1] };
   if ((m = /^## (.*)$/.exec(text))) return { kind: 'h2', text: m[1] };
   if ((m = /^# (.*)$/.exec(text))) return { kind: 'h1', text: m[1] };
@@ -234,7 +346,11 @@ export function convertMarker(text: string): Block | null {
   if ((m = /^(?:- )?\[([ xX])?\] (.*)$/.exec(text)))
     return { kind: 'todo', text: m[2], done: (m[1] ?? '').toLowerCase() === 'x' };
   if ((m = /^[-*] (.*)$/.exec(text))) return { kind: 'bullet', text: m[1] };
-  if ((m = /^\d+\. (.*)$/.exec(text))) return { kind: 'number', text: m[1] };
+  // A counted marker starts its list where it says: "3. " at 3, "c. " at c.
+  if ((m = /^(\d+)\. (.*)$/.exec(text)))
+    return { kind: 'number', text: m[2], start: Number.parseInt(m[1], 10) };
+  if ((m = /^([a-z])\. (.*)$/.exec(text)))
+    return { kind: 'alpha', text: m[2], start: letterIndex(m[1]) };
   if (/^(---|\*\*\*)$/.test(text)) return { kind: 'rule', text: '' };
   if ((m = /^```(.*)$/.exec(text))) return { kind: 'fence', text: '', lang: m[1].trim() };
   // "||" is a two-column table, "|||" a three-column one, and so on.

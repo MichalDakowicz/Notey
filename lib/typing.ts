@@ -80,8 +80,10 @@ export const SLASH_ITEMS: SlashItem[] = [
   { key: 'h1', label: 'Big heading', badge: '#', also: 'title h1' },
   { key: 'h2', label: 'Heading', badge: '##', also: 'h2 section' },
   { key: 'h3', label: 'Small heading', badge: '###', also: 'h3' },
+  { key: 'h4', label: 'Smallest heading', badge: '####', also: 'h4 label' },
   { key: 'bullet', label: 'Bullet list', badge: '-', also: 'ul item' },
   { key: 'number', label: 'Numbered list', badge: '1.', also: 'ol ordered' },
+  { key: 'alpha', label: 'Lettered list', badge: 'a.', also: 'ol ordered letters abc alpha' },
   { key: 'todo', label: 'Checkbox', badge: '[ ]', also: 'task todo' },
   { key: 'quote', label: 'Quote', badge: '>', also: 'blockquote' },
   { key: 'code', label: 'Code block', badge: '```', also: 'fence' },
@@ -100,6 +102,54 @@ export function slashHits(query: string): SlashItem[] {
   return SLASH_ITEMS.filter((it) =>
     `${it.label} ${it.key} ${it.also ?? ''}`.toLowerCase().includes(query),
   );
+}
+
+/** A tab is a tab: the text carries one, and the field draws it as a tab. */
+export const TAB = '\t';
+
+/**
+ * Tab inside a block's own text, where there is no list to nest and no cell to
+ * step to: a tab goes in at the caret, and Shift takes the one behind it back
+ * out. Returns null when there is nothing to take out.
+ */
+export function tabText(
+  plain: string,
+  start: number,
+  end: number,
+  back: boolean,
+): { text: string; caret: number } | null {
+  if (!back) {
+    return { text: plain.slice(0, start) + TAB + plain.slice(end), caret: start + TAB.length };
+  }
+  // Two spaces come out as readily as a tab: pasted text is indented that way.
+  const cut = /(\t| {1,2})$/.exec(plain.slice(0, start))?.[0];
+  if (!cut) return null;
+  return {
+    text: plain.slice(0, start - cut.length) + plain.slice(end),
+    caret: start - cut.length,
+  };
+}
+
+/**
+ * Tab inside a code block: two spaces in, or the line pulled two spaces back
+ * with Shift. Returns the whole text and where the caret lands.
+ */
+export function codeTab(
+  code: string,
+  start: number,
+  end: number,
+  back: boolean,
+): { text: string; caret: number } {
+  if (!back) {
+    return { text: code.slice(0, start) + '  ' + code.slice(end), caret: start + 2 };
+  }
+  const head = code.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
+  const space = /^ {1,2}/.exec(code.slice(head))?.[0] ?? '';
+  if (!space) return { text: code, caret: start };
+  return {
+    text: code.slice(0, head) + code.slice(head + space.length),
+    caret: Math.max(head, start - space.length),
+  };
 }
 
 /** Indent carried onto the next line inside a code block. */

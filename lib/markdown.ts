@@ -15,7 +15,7 @@ export type Inline =
   | { t: 'mention'; v: string; id: string };
 
 export type ListItem = {
-  kind: 'bullet' | 'number' | 'todo';
+  kind: 'bullet' | 'number' | 'alpha' | 'todo';
   marker: string;
   done: boolean;
   kids: Inline[];
@@ -24,7 +24,7 @@ export type ListItem = {
 };
 
 export type Block =
-  | { t: 'h1' | 'h2' | 'h3'; kids: Inline[] }
+  | { t: 'h1' | 'h2' | 'h3' | 'h4'; kids: Inline[] }
   | { t: 'p'; kids: Inline[] }
   | { t: 'quote'; kids: Inline[] }
   | { t: 'list'; items: ListItem[] }
@@ -254,10 +254,28 @@ export function parseBlocks(lines: string[], mentions: Mentionable[] = []): Bloc
       });
       continue;
     }
+    // A lettered item, "a. ", which the editor writes and nothing else does.
+    // Two letters only continue a list past "z", so "cf. see below" is prose.
+    if (
+      (m = /^([ \t]*)([a-z]{1,2})\. (.*)$/.exec(s)) &&
+      (m[2].length === 1 || items?.[items.length - 1]?.kind === 'alpha')
+    ) {
+      items = items ?? [];
+      items.push({
+        kind: 'alpha',
+        marker: m[2] + '.',
+        done: false,
+        kids: parseInline(m[3], mentions),
+        depth: indentOf(m[1]),
+      });
+      continue;
+    }
 
     flushList();
 
-    if ((m = /^### (.*)$/.exec(s))) {
+    if ((m = /^#### (.*)$/.exec(s))) {
+      out.push({ t: 'h4', kids: parseInline(m[1], mentions) });
+    } else if ((m = /^### (.*)$/.exec(s))) {
       out.push({ t: 'h3', kids: parseInline(m[1], mentions) });
     } else if ((m = /^## (.*)$/.exec(s))) {
       out.push({ t: 'h2', kids: parseInline(m[1], mentions) });

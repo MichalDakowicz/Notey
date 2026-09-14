@@ -9,6 +9,7 @@ import {
   type TextStyle,
 } from 'react-native';
 
+import { tabText } from '../lib/typing';
 import { useLiveBlock } from './useLiveBlock';
 import type { Marks } from '../lib/rich';
 import { c, f } from '../theme/tokens';
@@ -38,8 +39,12 @@ export type LiveFieldProps = {
   onEnter: (head: string, tail: string) => void;
   onBackspaceAtStart: () => void;
   onFocus: () => void;
-  /** Tab, on a table cell: step to the next cell, or the previous one. */
-  onTab?: (back: boolean) => void;
+  /**
+   * Tab: nest a list item, or step to the next table cell. Returns whether the
+   * key was taken — a block with nothing to nest or step to leaves it, and the
+   * field puts a tab in the text instead.
+   */
+  onTab?: (back: boolean) => boolean;
   /** Up and down: step between table rows, or move a menu's highlight. */
   onArrow?: (dir: -1 | 1) => void;
   /**
@@ -151,8 +156,15 @@ export const LiveField = forwardRef<LiveFieldHandle, LiveFieldProps>(function Li
   function handleKey(e: NativeSyntheticEvent<TextInputKeyPressEventData>) {
     const key = e.nativeEvent.key;
     // Only a hardware keyboard sends Tab; soft keyboards have none to send.
-    if (key === 'Tab' && onTab) {
-      onTab(false);
+    if (key === 'Tab') {
+      if (onTab?.(false)) return;
+      const put = tabText(block.plain, caret.current, caret.current, false);
+      if (!put) return;
+      const typed = block.type(put.text);
+      shown.current = typed.plain;
+      caret.current = typed.caret;
+      setHeld({ start: typed.caret, end: typed.caret });
+      onContext(typed.plain, typed.caret);
       return;
     }
     if (key === 'Backspace' && caret.current === 0) onBackspaceAtStart();

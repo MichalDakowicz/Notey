@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Image,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -130,6 +131,17 @@ export function DesktopChrome({ onProfile }: { onProfile: () => void }) {
     peekTimer.current = setTimeout(() => setPeek(false), after);
   }
 
+  /**
+   * The shelf's own hover, kept off Pressable on purpose.
+   *
+   * A Pressable contains its hover: entering a nested one — a notebook row —
+   * dispatches a lock that ends the hover of every Pressable around it. The
+   * peeked shelf therefore slid shut the moment the cursor reached a notebook,
+   * and opened again on the way to the next one. Enter and leave do not fire
+   * for a move onto a child, which is exactly the containment wanted here.
+   */
+  const shelfHover = Platform.OS === 'web' ? { onMouseEnter: holdPeek, onMouseLeave: () => releasePeek(120) } : {};
+
   const segment = pathname.split('/')[1] ?? '';
   const selectedId = pathname.split('/')[2];
   const list = search(q, nbFilter);
@@ -238,11 +250,7 @@ export function DesktopChrome({ onProfile }: { onProfile: () => void }) {
       <Animated.View style={[styles.slide, { width: slide }]}>
         {/* Hovering the shelf holds it open, so it does not slide away on the
             cursor's way to a notebook. */}
-        <Pressable
-          onHoverIn={shelf ? undefined : holdPeek}
-          onHoverOut={shelf ? undefined : () => releasePeek(120)}
-          style={styles.notebookColumn}
-        >
+        <View {...(shelf ? {} : shelfHover)} style={styles.notebookColumn}>
         <View style={styles.columnHead}>
           <View style={styles.columnTitleRow}>
             {picked ? <Blob size={13} color={tintOf(picked.tint).tint} /> : null}
@@ -306,7 +314,7 @@ export function DesktopChrome({ onProfile }: { onProfile: () => void }) {
             ))}
           </View>
         </View>
-        </Pressable>
+        </View>
       </Animated.View>
 
       {/* Open, the grip sits between the two columns. Away, it stays pinned by
