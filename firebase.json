@@ -1,0 +1,33 @@
+{
+  "hosting": {
+    "site": "jot-notebook",
+    "public": "dist",
+    "_comment": "No node_modules ignore: expo emits bundled assets under dist/assets/node_modules/, and the usual rule would drop every font.",
+    "ignore": ["firebase.json", "**/.*"],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ],
+    "headers": [
+      {
+        "_comment": "Only the export's hashed paths may be cached forever. /favicon.ico and the icon PNGs keep their names, so an immutable year on those would freeze a wrong icon in every browser that ever saw it.",
+        "source": "/_expo/**",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+      },
+      {
+        "source": "/assets/**",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+      },
+      {
+        "source": "**/*.@(ico|png|json|webmanifest)",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600" }]
+      },
+      {
+        "source": "/index.html",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      }
+    ]
+  }
+}

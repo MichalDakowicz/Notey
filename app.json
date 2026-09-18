@@ -1,0 +1,54 @@
+{
+  "expo": {
+    "name": "Jot.",
+    "slug": "jot",
+    "scheme": "jot",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#f5ead8"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.marginalia.jot"
+    },
+    "android": {
+      "package": "com.marginalia.jot",
+      "adaptiveIcon": {
+        "backgroundColor": "#f5ead8",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "edgeToEdgeEnabled": true
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Jot. uses your photos to set a profile picture."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "single",
+      "name": "Jot.",
+      "themeColor": "#c67139",
+      "description": "Class notes that set themselves as you write."
+    }
+  }
+}
