@@ -69,12 +69,41 @@ export function typeInto(runs: Run[], nextPlain: string, pending: Pending): Type
   };
 }
 
-/** Return in the middle of a block: the two halves, as markdown. */
-export function splitRuns(runs: Run[], caret: number): { head: string; tail: string } {
+/**
+ * A paste landing inside one block, read with the note's own parser.
+ *
+ * Pasted text cannot go through the typing path: the live shortcut closes the
+ * one pair sitting at the caret and nothing else, so "**bold *italic* bold**"
+ * arrived bold with its inner stars still showing. Parsing it reads the nest
+ * all the way down.
+ */
+export function pasteRuns(
+  runs: Run[],
+  start: number,
+  end: number,
+  text: string,
+  mentions: string[],
+): { runs: Run[]; plain: string; caret: number } {
+  // What was replaced hands over its annotation; otherwise the caret's own.
+  const marks = end > start ? marksBefore(runs, start + 1) : marksBefore(runs, start);
+  // A mention or tag stops being one as soon as something lands in it.
+  delete marks.mention;
+  delete marks.tag;
+  // Code is literal, so markdown pasted inside it stays as it was written.
+  const put: Run[] = marks.code ? [{ text, marks }] : parseRuns(text, mentions, marks);
+  const next = spliceRuns(runs, start, end, put);
+  return { runs: next, plain: plainOf(next), caret: start + plainOf(put).length };
+}
+
+/**
+ * Return in the middle of a block: the two halves, as markdown. A selection
+ * passes its far end too, and what it held goes — a paste lands in its place.
+ */
+export function splitRuns(runs: Run[], caret: number, end = caret): { head: string; tail: string } {
   const plain = plainOf(runs);
   return {
     head: serializeRuns(sliceRuns(runs, 0, caret)),
-    tail: serializeRuns(sliceRuns(runs, caret, plain.length)),
+    tail: serializeRuns(sliceRuns(runs, Math.max(caret, end), plain.length)),
   };
 }
 

@@ -10,6 +10,8 @@
  * writer sees and what the caret moves through; the delimiters are not there.
  */
 
+import { pairCloser } from './markdown';
+
 export type Marks = {
   bold?: true;
   em?: true;
@@ -113,8 +115,8 @@ export function parseRuns(md: string, mentions: string[] = [], marks: Marks = {}
       }
     }
 
-    // "***x***" is bold around italic. Left to the pair search below, the
-    // closing run gets split and both halves come out literal.
+    // "***x***" is bold around italic, taken whole here so its closing run of
+    // three does not have to be shared out between the two pairs.
     if (rest.startsWith('***')) {
       const end = md.indexOf('***', i + 3);
       if (end > i + 3) {
@@ -127,9 +129,9 @@ export function parseRuns(md: string, mentions: string[] = [], marks: Marks = {}
       }
     }
 
-    const pair = PAIRS.find(({ d }) => rest.startsWith(d) && closerFor(md, i, d) > 0);
+    const pair = PAIRS.find(({ d }) => rest.startsWith(d) && pairCloser(md, i, d) > 0);
     if (pair) {
-      const end = closerFor(md, i, pair.d);
+      const end = pairCloser(md, i, pair.d);
       flush();
       parseRuns(md.slice(i + pair.d.length, end), mentions, { ...marks, [pair.k]: true }).forEach((r) =>
         add(out, r.text, r.marks),
@@ -146,45 +148,69 @@ export function parseRuns(md: string, mentions: string[] = [], marks: Marks = {}
   return out;
 }
 
-/**
- * Where the pair opened at `i` closes, or -1.
- *
- * A delimiter with a space just inside it is not emphasis — "2 * 3 * 4" is
- * arithmetic, and Notion leaves it alone too — so both ends have to hug their
- * text.
- */
-function closerFor(md: string, i: number, d: string): number {
-  if (/\s|^$/.test(md[i + d.length] ?? '')) return -1;
-  let from = i + d.length + 1;
-  for (;;) {
-    const end = md.indexOf(d, from);
-    if (end < 0) return -1;
-    if (!/\s/.test(md[end - 1] ?? ' ')) return end;
-    from = end + 1;
-  }
-}
-
 /** What the writer sees, and what the caret offsets count. */
 export function plainOf(runs: Run[]): string {
   return runs.map((r) => r.text).join('');
 }
 
-/** Runs back to markdown, for the note on the server. */
-export function serializeRuns(runs: Run[]): string {
-  return merge(runs)
-    .map(({ text, marks }) => {
-      if (!text) return '';
-      if (marks.code) return '`' + text + '`';
+/** The marks written as a delimiter pair, in a fixed order to break ties. */
+const NEST: (keyof Marks)[] = ['link', 'bold', 'strike', 'mark', 'em'];
 
-      let out = text;
-      if (marks.em) out = `*${out}*`;
-      if (marks.mark) out = `==${out}==`;
-      if (marks.strike) out = `~~${out}~~`;
-      if (marks.bold) out = `**${out}**`;
-      if (marks.link) out = `[${out}](${marks.link})`;
-      return out;
-    })
-    .join('');
+function wrapped(kind: keyof Marks, text: string, marks: Marks): string {
+  if (kind === 'link') return `[${text}](${marks.link})`;
+  if (kind === 'bold') return `**${text}**`;
+  if (kind === 'strike') return `~~${text}~~`;
+  if (kind === 'mark') return `==${text}==`;
+  return `*${text}*`;
+}
+
+/**
+ * Runs back to markdown, for the note on the server.
+ *
+ * A mark a stretch of runs share is written once around the whole stretch —
+ * "**bold *em* bold**" — so the mark reaching furthest is the one that goes
+ * outside. Wrapping each run on its own instead closed and reopened the bold
+ * around every italic inside it, and what came out read back with its stars
+ * showing, which is why pasted emphasis lost its nesting on the next keystroke.
+ */
+export function serializeRuns(runs: Run[]): string {
+  return written(
+    merge(runs).filter((r) => !!r.text),
+    [],
+  );
+}
+
+function written(runs: Run[], open: (keyof Marks)[]): string {
+  let out = '';
+  let i = 0;
+
+  while (i < runs.length) {
+    const { text, marks } = runs[i];
+    const left = NEST.filter((k) => !!marks[k] && !open.includes(k));
+
+    // Nothing left to open: code is literal, and plain text is itself.
+    if (!left.length) {
+      out += marks.code ? '`' + text + '`' : text;
+      i += 1;
+      continue;
+    }
+
+    let outer = left[0];
+    let span = 0;
+    left.forEach((k) => {
+      let j = i;
+      while (j < runs.length && runs[j].marks[k] === marks[k]) j += 1;
+      if (j - i > span) {
+        span = j - i;
+        outer = k;
+      }
+    });
+
+    out += wrapped(outer, written(runs.slice(i, i + span), [...open, outer]), marks);
+    i += span;
+  }
+
+  return out;
 }
 
 function merge(runs: Run[]): Run[] {

@@ -37,6 +37,63 @@ export type Mentionable = { id: string; title: string };
 
 const isSpace = (ch: string | undefined) => ch === undefined || /\s/.test(ch);
 
+/**
+ * Where the pair opened at `i` closes, or -1.
+ *
+ * Both ends have to hug their text: "2 * 3 * 4" is arithmetic, not emphasis,
+ * and Notion leaves it alone too.
+ *
+ * Stars come in runs, and a run is shared out from its end — the three closing
+ * "**bold *italic***" are one star closing the em and two closing the bold. So
+ * a lone star never closes on a run of two, a double takes the last two of a
+ * longer run, and it only does that when something inside is still waiting for
+ * its closer, or the stray star of "**a***" would be swallowed.
+ */
+export function pairCloser(src: string, i: number, d: string): number {
+  if (/\s|^$/.test(src[i + d.length] ?? '')) return -1;
+  const stars = d[0] === '*';
+  let from = i + d.length + 1;
+  for (;;) {
+    const end = src.indexOf(d, from);
+    if (end < 0) return -1;
+    if (/\s/.test(src[end - 1] ?? ' ')) {
+      from = end + 1;
+      continue;
+    }
+    if (!stars) return end;
+
+    let head = end;
+    while (src[head - 1] === '*') head -= 1;
+    let foot = end;
+    while (src[foot + 1] === '*') foot += 1;
+    const run = foot - head + 1;
+
+    if (head >= i + d.length) {
+      if (d.length === 1) {
+        if (run === 1) return head;
+      } else if (run === 2) {
+        return head;
+      } else {
+        return openStar(src.slice(i + d.length, head)) ? foot - 1 : head;
+      }
+    }
+    from = foot + 1;
+  }
+}
+
+/** Is a lone star left open in here, still waiting for its closer? */
+function openStar(src: string): boolean {
+  for (let i = 0; i < src.length; i += 1) {
+    if (src[i] !== '*') continue;
+    if (src[i + 1] === '*') {
+      i += 1;
+      continue;
+    }
+    if (pairCloser(src, i, '*') < 0) return true;
+  }
+  return false;
+}
+
 export function parseInline(src: string, mentions: Mentionable[] = []): Inline[] {
   const sorted = mentions.slice().sort((a, b) => b.title.length - a.title.length);
   const out: Inline[] = [];
@@ -81,8 +138,8 @@ export function parseInline(src: string, mentions: Mentionable[] = []): Inline[]
     }
 
     if (rest.startsWith('**')) {
-      const end = src.indexOf('**', i + 2);
-      if (end > i + 1) {
+      const end = pairCloser(src, i, '**');
+      if (end > 0) {
         flush();
         out.push({ t: 'bold', kids: parseInline(src.slice(i + 2, end), mentions) });
         i = end + 2;
@@ -90,10 +147,10 @@ export function parseInline(src: string, mentions: Mentionable[] = []): Inline[]
       }
     }
 
-    if (rest.startsWith('~~') || (src[i] === '~' && !rest.startsWith('~~'))) {
+    if (src[i] === '~') {
       const d = rest.startsWith('~~') ? '~~' : '~';
-      const end = src.indexOf(d, i + d.length);
-      if (end > i + d.length) {
+      const end = pairCloser(src, i, d);
+      if (end > 0) {
         flush();
         out.push({ t: 'strike', kids: parseInline(src.slice(i + d.length, end), mentions) });
         i = end + d.length;
@@ -102,8 +159,8 @@ export function parseInline(src: string, mentions: Mentionable[] = []): Inline[]
     }
 
     if (rest.startsWith('==')) {
-      const end = src.indexOf('==', i + 2);
-      if (end > i + 1) {
+      const end = pairCloser(src, i, '==');
+      if (end > 0) {
         flush();
         out.push({ t: 'mark', kids: parseInline(src.slice(i + 2, end), mentions) });
         i = end + 2;
@@ -112,8 +169,8 @@ export function parseInline(src: string, mentions: Mentionable[] = []): Inline[]
     }
 
     if (src[i] === '*') {
-      const end = src.indexOf('*', i + 1);
-      if (end > i + 1) {
+      const end = pairCloser(src, i, '*');
+      if (end > 0) {
         flush();
         out.push({ t: 'em', kids: parseInline(src.slice(i + 1, end), mentions) });
         i = end + 1;

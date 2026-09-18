@@ -19,7 +19,7 @@ export default function Setup() {
       style={styles.screen}
       contentContainerStyle={{ padding: 26, paddingTop: insets.top + 30, gap: 18 }}
     >
-      <Text style={styles.kicker}>notey. · setup</Text>
+      <Text style={styles.kicker}>Jot. · setup</Text>
       <Text style={styles.title}>Point the app at your Supabase project</Text>
       <Text style={styles.body}>
         Login, notes and file storage all live in Supabase, so the app needs two environment

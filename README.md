@@ -1,4 +1,4 @@
-# notey. — class notes
+# Jot. — class notes
 
 A React Native (Expo) build of the *Class Notes* design canvas: a notebook per
 subject, markdown that sets itself as you leave a line, `@` mentions that become
@@ -35,7 +35,7 @@ tag, notebook export, sign out.
 
 ## Type and logo
 
-Headings are set in **Notey Display**: Caprasimo, the display face the design
+Headings are set in **Jot Display**: Caprasimo, the display face the design
 canvas uses, with the sixteen Polish letters it lacks composed in — the acute
 from its own á/Á, the tittle from i, an ogonek mirrored out of the cedilla, a
 drawn bar for Ł/ł, plus the middle dot. Caprasimo is OFL with no Reserved Font
@@ -43,7 +43,7 @@ Name, so the derivative is allowed; `assets/fonts/OFL.txt` ships with it.
 Body text is Figtree, which covers Polish as published.
 
 ```bash
-npm run font    # rebuild assets/fonts/NoteyDisplay-Regular.ttf from Caprasimo
+npm run font    # rebuild assets/fonts/JotDisplay-Regular.ttf from Caprasimo
 npm run icons   # redraw every app icon from the logo
 ```
 

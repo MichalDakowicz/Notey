@@ -1,5 +1,5 @@
 {
-  "name": "notey",
+  "name": "jot",
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {
@@ -28,9 +28,11 @@
   "devDependencies": {
     "@napi-rs/canvas": "^1.0.8",
     "@types/react": "~19.2.2",
+    "firebase-tools": "^15.30.1",
     "opentype.js": "^2.0.0",
     "sharp": "^0.35.4",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.1"
   },
   "scripts": {
     "start": "expo start",
@@ -39,7 +41,8 @@
     "typecheck": "tsc --noEmit",
     "web": "expo start --web",
     "font": "node scripts/build-display-font.mjs",
-    "icons": "node scripts/make-icons.mjs"
+    "icons": "node scripts/make-icons.mjs",
+    "test": "vitest run"
   },
   "private": true
 }

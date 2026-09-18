@@ -1,6 +1,6 @@
 /**
  * Draws the app icons from logo 2a (terracotta tile, cream n, sage stop).
- * The "n" is taken as an outline straight out of the display font, so the
+ * The "J" is taken as an outline straight out of the display font, so the
  * icons need no font installed at render time and match the wordmark exactly.
  *
  *   node scripts/make-icons.mjs
@@ -11,8 +11,10 @@ import opentype from 'opentype.js';
 import sharp from 'sharp';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
-const FONT = path.join(ROOT, 'assets/fonts/NoteyDisplay-Regular.ttf');
+const FONT = path.join(ROOT, 'assets/fonts/JotDisplay-Regular.ttf');
 const ASSETS = path.join(ROOT, 'assets');
+/** Copied into the export root verbatim, so these keep the paths the HTML names. */
+const PUBLIC = path.join(ROOT, 'public');
 
 const TILE = '#c67139';
 const LETTER = '#fffdf9';
@@ -28,16 +30,16 @@ const blob = (x, y, size, fill) =>
 
 /** The letter as a path, sitting on the given baseline. */
 function letter(fontSize, leftX, baselineY, fill) {
-  const probe = font.getPath('n', 0, 0, fontSize);
+  const probe = font.getPath('J', 0, 0, fontSize);
   const b = probe.getBoundingBox();
-  const p = font.getPath('n', leftX - b.x1, baselineY, fontSize);
+  const p = font.getPath('J', leftX - b.x1, baselineY, fontSize);
   return `<path d="${p.toPathData(2)}" fill="${fill}"/>`;
 }
 
 /** Bounding box of the mark, so it can be centred inside a canvas. */
 function markBox(size, { inset = 0.2, baseline = 0.78, letterRatio = 0.52 } = {}) {
   const fontSize = size * letterRatio;
-  const gb = font.getPath('n', 0, 0, fontSize).getBoundingBox();
+  const gb = font.getPath('J', 0, 0, fontSize).getBoundingBox();
   const leftX = size * inset;
   const baselineY = size * baseline;
   const stopSize = size * 0.125;
@@ -65,7 +67,7 @@ function centeredMark(size, letterFill, stopFill, target = 0.62) {
 /** n + blob stop, sitting on a common baseline. */
 function markContent(size, letterFill, stopFill, { inset = 0.2, baseline = 0.78, letterRatio = 0.52 } = {}) {
   const fontSize = size * letterRatio;
-  const glyph = font.getPath('n', 0, 0, fontSize);
+  const glyph = font.getPath('J', 0, 0, fontSize);
   const gb = glyph.getBoundingBox();
   const leftX = size * inset;
   const baselineY = size * baseline;
@@ -87,6 +89,20 @@ function svgSquare(size, { background, radius = 0, content }) {
 
 async function write(name, svg) {
   const out = path.join(ASSETS, name);
+  await sharp(Buffer.from(svg)).png().toFile(out);
+  console.log('wrote', path.relative(ROOT, out));
+}
+
+/**
+ * The web icons, written where the export copies them from verbatim.
+ *
+ * A browser asks for /favicon.ico before it has read a line of the page, and
+ * an .ico caps out at 48px — so the tab, the bookmark and the home screen are
+ * pointed at PNGs of their own instead, at the sizes each one actually wants.
+ */
+async function writePublic(name, svg) {
+  await fs.promises.mkdir(PUBLIC, { recursive: true });
+  const out = path.join(PUBLIC, name);
   await sharp(Buffer.from(svg)).png().toFile(out);
   console.log('wrote', path.relative(ROOT, out));
 }
@@ -129,3 +145,43 @@ await write(
     content: markContent(256, LETTER, STOP),
   }),
 );
+
+// The tab, at the two sizes a browser picks between.
+for (const size of [32, 192, 512]) {
+  await writePublic(
+    `icon-${size}.png`,
+    svgSquare(size, {
+      background: TILE,
+      radius: size * 0.28,
+      content: markContent(size, LETTER, STOP),
+    }),
+  );
+}
+
+// Apple wants a square with no rounding of its own: iOS masks it.
+await writePublic(
+  'apple-touch-icon.png',
+  svgSquare(180, { background: TILE, content: centeredMark(180, LETTER, STOP, 0.6) }),
+);
+
+await fs.promises.writeFile(
+  path.join(PUBLIC, 'manifest.json'),
+  JSON.stringify(
+    {
+      name: 'Jot.',
+      short_name: 'Jot.',
+      start_url: '/',
+      display: 'standalone',
+      background_color: '#f5ead8',
+      theme_color: TILE,
+      icons: [
+        { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+        { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+        { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      ],
+    },
+    null,
+    2,
+  ) + '\n',
+);
+console.log('wrote', path.relative(ROOT, path.join(PUBLIC, 'manifest.json')));

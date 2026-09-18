@@ -9,7 +9,7 @@ import {
   type TextStyle,
 } from 'react-native';
 
-import { tabText } from '../lib/typing';
+import { editOf, tabText } from '../lib/typing';
 import { useLiveBlock } from './useLiveBlock';
 import type { Marks } from '../lib/rich';
 import { c, f } from '../theme/tokens';
@@ -37,6 +37,12 @@ export type LiveFieldProps = {
   onSelection: (range: Range, marks: Marks) => void;
   /** Return: the block split in two, already markdown. */
   onEnter: (head: string, tail: string) => void;
+  /**
+   * More than one line pasted in: the block either side of the caret, already
+   * markdown, and the pasted text between them. A field that leaves this out
+   * gets the paste on one line, which is what a table cell wants.
+   */
+  onPasteText?: (head: string, text: string, tail: string) => void;
   onBackspaceAtStart: () => void;
   onFocus: () => void;
   /**
@@ -88,6 +94,7 @@ export const LiveField = forwardRef<LiveFieldHandle, LiveFieldProps>(function Li
     onContext,
     onSelection,
     onEnter,
+    onPasteText,
     onBackspaceAtStart,
     onFocus,
     onTab,
@@ -133,9 +140,34 @@ export const LiveField = forwardRef<LiveFieldHandle, LiveFieldProps>(function Li
   function handleChange(next: string) {
     const nl = next.indexOf('\n');
     if (nl >= 0) {
+      // A field hands back its whole text and never says how it got there, so
+      // what arrived has to be read off it: one newline is Return, and a run of
+      // lines is a paste the editor turns into blocks of its own.
+      const edit = editOf(shown.current, next);
+      if (onPasteText && edit.put.includes('\n') && edit.put !== '\n') {
+        const split = block.split(edit.start, edit.end);
+        onPasteText(split.head, edit.put, split.tail);
+        return;
+      }
+
       const split = block.split(nl);
       shown.current = next.slice(0, nl) + next.slice(nl + 1);
       onEnter(split.head, split.tail);
+      return;
+    }
+
+    // A run of characters carrying markup arrived at once, which is a paste and
+    // not typing: it is read whole, since the live shortcut only closes the one
+    // pair at the caret. Anything else stays on the typing path, where the
+    // arrow and quote polish lives.
+    const edit = editOf(shown.current, next);
+    if (edit.put.length > 1 && MARKUP.test(edit.put)) {
+      const pasted = block.paste(edit.start, edit.end, edit.put);
+      shown.current = pasted.plain;
+      caret.current = pasted.caret;
+      setHeld({ start: pasted.caret, end: pasted.caret });
+      onContext(pasted.plain, pasted.caret);
+      report();
       return;
     }
 
@@ -193,6 +225,8 @@ export const LiveField = forwardRef<LiveFieldHandle, LiveFieldProps>(function Li
       }}
       placeholder={placeholder}
       placeholderTextColor={c.n400}
+      // Accent, not the selection wash: this colours the caret and the handles
+      // as well, and the wash is far too light to find a caret in.
       selectionColor={c.accent}
       style={[styles.field, style]}
     >
@@ -204,6 +238,9 @@ export const LiveField = forwardRef<LiveFieldHandle, LiveFieldProps>(function Li
     </TextInput>
   );
 });
+
+/** Delimiters a paste can carry, so plain text keeps the typing path. */
+const MARKUP = new RegExp('[*~=`\[]');
 
 /** Annotations as text styles. */
 export function styleOf(marks: Marks): TextStyle[] {

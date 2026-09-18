@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "notey.",
-    "slug": "notey",
-    "scheme": "notey",
+    "name": "Jot.",
+    "slug": "jot",
+    "scheme": "jot",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -15,10 +15,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.marginalia.notey"
+      "bundleIdentifier": "com.marginalia.jot"
     },
     "android": {
-      "package": "com.marginalia.notey",
+      "package": "com.marginalia.jot",
       "adaptiveIcon": {
         "backgroundColor": "#f5ead8",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -35,7 +35,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "notey. uses your photos to set a profile picture."
+          "photosPermission": "Jot. uses your photos to set a profile picture."
         }
       ]
     ],
@@ -46,7 +46,9 @@
       "favicon": "./assets/favicon.png",
       "bundler": "metro",
       "output": "single",
-      "name": "notey."
+      "name": "Jot.",
+      "themeColor": "#c67139",
+      "description": "Class notes that set themselves as you write."
     }
   }
 }

@@ -4,7 +4,7 @@
  * Neither `adjustsFontSizeToFit` (iOS only) nor `onTextLayout` (missing on
  * react-native-web) covers every target this app ships to, so the width of a
  * title is worked out from the font itself instead. The table below is the
- * advance width of every glyph in NoteyDisplay-Regular, in ems, read straight
+ * advance width of every glyph in JotDisplay-Regular, in ems, read straight
  * off the file:
  *
  *   node -e "…opentype.parse(…).charToGlyph(ch).advanceWidth / unitsPerEm"

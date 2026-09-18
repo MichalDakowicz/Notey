@@ -34,6 +34,7 @@ import {
   type BlockKind,
 } from '../../../lib/doc';
 import { mdOf, plainFor, replaceRuns, runsOf } from '../../../lib/field';
+import { pasteInto } from '../../../lib/paste';
 import { useFittedDisplaySize } from '../../../lib/fit';
 import { useIsWide } from '../../../lib/layout';
 import type { Marks } from '../../../lib/rich';
@@ -46,7 +47,7 @@ import {
   slashQuery,
   type SlashItem,
 } from '../../../lib/typing';
-import { c, f, shadow, tintOf } from '../../../theme/tokens';
+import { c, f, SELECTION, shadow, tintOf } from '../../../theme/tokens';
 
 type Range = { start: number; end: number };
 
@@ -66,6 +67,15 @@ function blockOf(node: unknown): number | null {
   const at = id === null || id === undefined ? NaN : Number.parseInt(id, 10);
   return Number.isFinite(at) ? at : null;
 }
+/**
+ * Marks a row as a block on web, the way each field marks itself, so a drag
+ * over a divider, a code block, or the gutter a list marker sits in can be
+ * traced back to the block it crossed.
+ */
+function blockData(i: number): { dataSet?: { block: string } } {
+  return Platform.OS === 'web' ? { dataSet: { block: String(i) } } : {};
+}
+
 type Mention = { start: number; end: number; q: string };
 
 export default function Editor() {
@@ -108,6 +118,9 @@ export default function Editor() {
   const spanRef = useRef<{ from: number; to: number } | null>(null);
   const dropRef = useRef<(() => void) | null>(null);
   const copyRef = useRef<(() => void) | null>(null);
+  /** Whether the focused field already holds all of its own text. */
+  const wholeBlockRef = useRef<(() => boolean) | null>(null);
+  const blockCount = useRef(1);
   spanRef.current = span;
 
   useEffect(() => {
@@ -121,40 +134,85 @@ export default function Editor() {
 
   // With blocks held, the keyboard acts on them rather than on any one field.
   useEffect(() => {
-    if (Platform.OS !== 'web' || !spanRef.current) return;
+    if (Platform.OS !== 'web') return;
     const onKey = (e: KeyboardEvent) => {
+      const shortcut = (e.metaKey || e.ctrlKey) && !e.altKey;
+
+      // Select all: a browser can only ever reach the end of the block it is
+      // in, so the first press takes the block and the next takes the note.
+      if (shortcut && e.key.toLowerCase() === 'a') {
+        if (!spanRef.current && !wholeBlockRef.current?.()) return;
+        e.preventDefault();
+        window.getSelection()?.removeAllRanges();
+        setSpan({ from: 0, to: blockCount.current - 1 });
+        return;
+      }
+
       if (!spanRef.current) return;
       if (e.key === 'Backspace' || e.key === 'Delete') {
         e.preventDefault();
         dropRef.current?.();
       } else if (e.key === 'Escape') {
         setSpan(null);
-      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c') {
+      } else if (shortcut && e.key.toLowerCase() === 'c') {
         copyRef.current?.();
+      } else if (shortcut && e.key.toLowerCase() === 'x') {
+        e.preventDefault();
+        copyRef.current?.();
+        dropRef.current?.();
       }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [span]);
+  }, []);
 
   /**
-   * A drag that leaves one block: browsers do let the anchor and focus sit in
-   * different editable elements, so that is read back as a block selection and
-   * the ragged text selection is dropped.
+   * A drag that leaves one block. A browser cannot stretch one text selection
+   * across separate editable elements, so past a block's edge the selection
+   * becomes block-shaped, as it does in Notion.
+   *
+   * The drag is followed by the pointer rather than by `selectionchange`.
+   * Dropping the ragged text selection is what leaves the block highlight as
+   * the only one on screen — but it also ends the browser's own drag, so the
+   * selection cannot be the thing that says how far the drag has reached: read
+   * that way, a drag over five blocks stops after two.
    */
   useEffect(() => {
     if (Platform.OS !== 'web') return;
-    const onSelect = () => {
-      const sel = window.getSelection();
-      if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
-      const from = blockOf(sel.anchorNode);
-      const to = blockOf(sel.focusNode);
-      if (from === null || to === null || from === to) return;
-      sel.removeAllRanges();
+    let from: number | null = null;
+
+    const onDown = (e: PointerEvent) => {
+      if (e.button !== 0) return;
+      from = blockOf(e.target);
+      // A press on the bar the held blocks put up is not a press on a block.
+      if (from !== null) setSpan(null);
+    };
+
+    const onMove = (e: PointerEvent) => {
+      if (from === null || e.buttons === 0) return;
+      const to = blockOf(document.elementFromPoint(e.clientX, e.clientY));
+      if (to === null) return;
+      // Inside the block it started in the browser's own text selection is the
+      // right one — until the drag has left once, which killed it for good.
+      if (to === from && !spanRef.current) return;
+      window.getSelection()?.removeAllRanges();
       setSpan({ from, to });
     };
-    document.addEventListener('selectionchange', onSelect);
-    return () => document.removeEventListener('selectionchange', onSelect);
+
+    const onUp = () => {
+      from = null;
+    };
+
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+    document.addEventListener('pointercancel', onUp);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onUp);
+    };
   }, []);
 
   if (!note) {
@@ -368,6 +426,9 @@ export default function Editor() {
     next[i] = { ...next[i], text: md };
     save(next);
     setForced(null);
+    // Typing is about one block, so blocks held from before are let go rather
+    // than left highlighted around a line that is being written.
+    if (span) setSpan(null);
   }
 
   /**
@@ -461,6 +522,27 @@ export default function Editor() {
       ...(kind === 'todo' ? { done: false } : {}),
     });
     write(next, i + 1, 0);
+  }
+
+  /**
+   * More than one line pasted into a block: the text is read back as markdown,
+   * which is what a copied span is written out as, and lands as blocks between
+   * the two halves of the block the caret was in.
+   */
+  function onPasteText(head: string, text: string, tail: string, i: number) {
+    // With blocks held, the paste takes their place: what was in them is what
+    // the selection was standing for.
+    if (spanBounds) {
+      const cleared = [...blocks];
+      cleared.splice(spanBounds.lo, spanBounds.hi - spanBounds.lo + 1, { kind: 'p', text: '' });
+      const over = pasteInto(cleared, spanBounds.lo, '', text, '', mentionTitles);
+      setSpan(null);
+      write(over.blocks, over.at, over.caret);
+      return;
+    }
+
+    const put = pasteInto(blocks, i, head, text, tail, mentionTitles);
+    write(put.blocks, put.at, put.caret);
   }
 
   /**
@@ -606,6 +688,13 @@ export default function Editor() {
 
   dropRef.current = dropSpan;
   copyRef.current = copySpan;
+  blockCount.current = blocks.length;
+  // An empty block counts as held: there is nothing in it left to take.
+  wholeBlockRef.current = () => {
+    if (focus === null || !blocks[focus]) return false;
+    const len = plainFor(blocks[focus].text, mentionTitles).length;
+    return len === 0 || (sel.current.start === 0 && sel.current.end === len);
+  };
 
   const panelBottom = keyboard ? keyboard + 12 : insets.bottom + 96;
 
@@ -666,6 +755,7 @@ export default function Editor() {
                   key={i}
                   onPress={() => focusAfterRule(i)}
                   style={[styles.ruleRow, held && styles.held]}
+                  {...blockData(i)}
                 >
                   <View style={styles.rule} />
                 </Pressable>
@@ -679,7 +769,7 @@ export default function Editor() {
                 focus === i && cell?.r === r && cell?.c === ci;
 
               return (
-                <View key={i} style={[styles.tableBlock, held && styles.held]}>
+                <View key={i} style={[styles.tableBlock, held && styles.held]} {...blockData(i)}>
                   <View style={styles.tableRowWrap}>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                       <View>
@@ -796,7 +886,7 @@ export default function Editor() {
 
             if (block.kind === 'fence') {
               return (
-                <View key={i} style={[styles.fenceRow, held && styles.held]}>
+                <View key={i} style={[styles.fenceRow, held && styles.held]} {...blockData(i)}>
                   <TextInput
                     value={block.lang}
                     onChangeText={(lang) => replace(i, { lang })}
@@ -839,6 +929,7 @@ export default function Editor() {
                   held && styles.held,
                   !!block.depth && { marginLeft: block.depth * 20 },
                 ]}
+                {...blockData(i)}
               >
                 <Prefix
                   block={block}
@@ -863,6 +954,7 @@ export default function Editor() {
                     setActive(marks);
                   }}
                   onEnter={(head, tail) => onEnter(head, tail, i)}
+                  onPasteText={(head, text, tail) => onPasteText(head, text, tail, i)}
                   onBackspaceAtStart={() => onBackspaceAtStart(i)}
                   onCaretSpot={setSpot}
                   blockId={String(i)}
@@ -926,14 +1018,17 @@ export default function Editor() {
           lifts it back out; anywhere else — a paragraph, a heading, a code block — it puts a
           tab in the text, and it never walks the focus out of the note. Backspace at the head of a block clears its shape. The arrows
           walk the lines and carry on into the next block; hold Shift with them to take whole
-          blocks, then Copy or Delete.
+          blocks, and a drag past a block's edge takes them the same way.{' '}
+          <Text style={{ fontFamily: f.b800 }}>Ctrl+A</Text> takes the block, and again takes the
+          note. Held blocks can be copied, cut, deleted, or pasted over.
         </Text>
       </ScrollView>
 
       {spanBounds ? (
         <View style={[styles.spanBar, { bottom: panelBottom }]}>
           <Text style={styles.spanCount}>
-            {spanBounds.hi - spanBounds.lo + 1} blocks
+            {spanBounds.hi - spanBounds.lo + 1}
+            {spanBounds.hi === spanBounds.lo ? ' block' : ' blocks'}
           </Text>
           <Pressable
             onPress={copySpan}
@@ -1144,7 +1239,9 @@ const styles = StyleSheet.create({
   boxOn: { backgroundColor: c.g500, borderColor: c.g600 },
   tick: { fontFamily: f.b800, fontSize: 11, lineHeight: 14, color: c.paper },
 
-  held: { backgroundColor: c.a100, borderRadius: 10 },
+  // The same wash the browser paints over selected text, so taking a line and
+  // taking five read as one thing.
+  held: { backgroundColor: SELECTION.bg, borderRadius: 10 },
   spanBar: {
     position: 'absolute',
     left: 18,

@@ -6,8 +6,8 @@ import { c, f, shadow } from '../theme/tokens';
 
 /**
  * Logo 2a from the canvas — the wordmark with a blob full stop, and the app
- * mark as an "n" in the corner of a tile — recoloured: terracotta tile,
- * cream n, sage stop.
+ * mark as a "J" in the corner of a tile — recoloured: terracotta tile,
+ * cream J, sage stop.
  */
 export const LOGO = {
   tile: c.accent,
@@ -17,7 +17,7 @@ export const LOGO = {
   wordStop: c.accent,
 } as const;
 
-/** The square app mark: n in the bottom-left corner of a rounded tile. */
+/** The square app mark: J in the bottom-left corner of a rounded tile. */
 export function LogoMark({
   size = 88,
   style,
@@ -53,14 +53,14 @@ export function LogoMark({
           color: LOGO.letter,
         }}
       >
-        n
+        J
       </Text>
       <Blob size={size * 0.125} color={LOGO.stop} style={{ marginBottom: size * 0.055 }} />
     </View>
   );
 }
 
-/** The wordmark: notey plus its blob full stop. */
+/** The wordmark: Jot plus its blob full stop. */
 export function LogoWord({
   size = 42,
   color = LOGO.word,
@@ -83,7 +83,7 @@ export function LogoWord({
           color,
         }}
       >
-        notey
+        Jot
       </Text>
       <Blob size={size * 0.33} color={stopColor} style={{ marginBottom: size * 0.13 }} />
     </View>

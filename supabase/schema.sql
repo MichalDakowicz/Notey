@@ -1,4 +1,4 @@
--- notey. — full backend schema.
+-- Jot. — full backend schema.
 -- Paste into Supabase Studio → SQL editor → Run. Safe to re-run.
 
 create extension if not exists "pgcrypto";

@@ -21,7 +21,7 @@ import { useStore } from '../lib/store';
 import { relative } from '../lib/time';
 import { c, f, NAV_OFF, NAV_ON, shadow, tintOf } from '../theme/tokens';
 
-const SHELF_KEY = 'notey.shelf';
+const SHELF_KEY = 'jot.shelf';
 const SHELF_W = 244;
 const HANDLE = 18;
 

@@ -3,6 +3,7 @@ import { useRef } from 'react';
 import {
   mdOf,
   mentionRuns,
+  pasteRuns,
   runsOf,
   splitRuns,
   toggleRuns,
@@ -58,9 +59,23 @@ export function useLiveBlock(md: string, mentions: string[], emit: (md: string) 
       return { plain: typed.plain, caret: typed.caret };
     },
 
-    /** Return pressed: the block's two halves, as markdown. */
-    split(caret: number) {
-      return splitRuns(runs.current, caret);
+    /**
+     * A paste landing in this block. Read as markdown rather than typed in, so
+     * every pair it carries is annotated and not just the one at the caret.
+     */
+    paste(start: number, end: number, text: string): { plain: string; caret: number } {
+      pending.current = null;
+      const put = pasteRuns(runs.current, start, end, text, mentions);
+      push(put.runs);
+      return { plain: put.plain, caret: put.caret };
+    },
+
+    /**
+     * Return pressed, or a paste landing across blocks: the block's two halves,
+     * as markdown. A selection passes its far end too, and what it held goes.
+     */
+    split(caret: number, end = caret) {
+      return splitRuns(runs.current, caret, end);
     },
 
     toggle(start: number, end: number, kind: keyof Marks, value: true | string = true) {

@@ -3,7 +3,7 @@
  * ą ć ę ł ń ś ź ż and their capitals are missing. This script composes them
  * from parts that are already inside the font (the acute from á/Á, the tittle
  * from i, the cedilla from ç mirrored into an ogonek) plus a drawn bar for Ł,
- * and writes the result as "Notey Display".
+ * and writes the result as "Jot Display".
  *
  * Caprasimo is OFL with no Reserved Font Name, so the derivative is allowed;
  * assets/fonts/OFL.txt travels with it.
@@ -16,7 +16,7 @@ import opentype from 'opentype.js';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const SRC = path.join(ROOT, 'assets/fonts/Caprasimo-Regular.ttf');
-const OUT = path.join(ROOT, 'assets/fonts/NoteyDisplay-Regular.ttf');
+const OUT = path.join(ROOT, 'assets/fonts/JotDisplay-Regular.ttf');
 
 const font = opentype.parse(fs.readFileSync(SRC).buffer.slice(0));
 
@@ -340,7 +340,7 @@ for (let i = 0; i < font.glyphs.length; i++) glyphs.push(font.glyphs.get(i));
 glyphs.push(...composed);
 
 const out = new opentype.Font({
-  familyName: 'Notey Display',
+  familyName: 'Jot Display',
   styleName: 'Regular',
   unitsPerEm: font.unitsPerEm,
   ascender: font.ascender,

@@ -42,7 +42,7 @@ export const c = {
 } as const;
 
 export const f = {
-  head: 'NoteyDisplay',
+  head: 'JotDisplay',
   b400: 'Figtree_400Regular',
   b500: 'Figtree_500Medium',
   b600: 'Figtree_600SemiBold',
@@ -105,6 +105,15 @@ export const TINTS = [
 ] as const;
 
 export const tintOf = (i: number) => TINTS[((i % TINTS.length) + TINTS.length) % TINTS.length];
+
+/**
+ * One highlight for everything a selection holds.
+ *
+ * A browser paints its own blue over selected text, which is nothing like the
+ * wash the held blocks beside it sit on — so both are painted with this, and
+ * taking a line and taking five look like the same act.
+ */
+export const SELECTION = { bg: c.a300, fg: c.n900 } as const;
 
 export const NAV_ON = { bg: c.a200, fg: c.a800 };
 export const NAV_OFF = { bg: 'transparent', fg: c.n600 };

@@ -49,6 +49,7 @@ export const LiveField = forwardRef<LiveFieldHandle, LiveFieldProps>(function Li
     onCaretSpot,
     onCross,
     onSelectAcross,
+    onPasteText,
     blockId,
   },
   ref,
@@ -268,11 +269,20 @@ export const LiveField = forwardRef<LiveFieldHandle, LiveFieldProps>(function Li
   function handlePaste(e: React.ClipboardEvent<HTMLDivElement>) {
     // Keep the block plain: styled HTML has nowhere to go in a markdown note.
     e.preventDefault();
-    const put = e.clipboardData.getData('text/plain').replace(NEWLINES, ' ').replace(NBSP, ' ');
+    const text = e.clipboardData.getData('text/plain').replace(NBSP, ' ');
     const range = readSelection() ?? { start: plain.length, end: plain.length };
-    const typed = block.type(plain.slice(0, range.start) + put + plain.slice(range.end));
-    want.current = typed.caret;
-    onContext(typed.plain, typed.caret);
+
+    // More than one line is more than one block, and only the editor makes
+    // blocks: hand it the two halves of this one with the text to go between.
+    if (onPasteText && NEWLINES.test(text)) {
+      const split = block.split(range.start, range.end);
+      onPasteText(split.head, text, split.tail);
+      return;
+    }
+
+    const pasted = block.paste(range.start, range.end, text.replace(SPACES, ' '));
+    want.current = pasted.caret;
+    onContext(pasted.plain, pasted.caret);
   }
 
   const css = { ...FIELD_CSS, ...cssOf(StyleSheet.flatten(style) ?? {}) };
@@ -337,7 +347,9 @@ function attrOf(marks: Marks): string {
 }
 
 const NBSP = new RegExp(String.fromCharCode(160), 'g');
-const NEWLINES = new RegExp('[\r\n]+', 'g');
+/** Not global: a global regexp carries its own cursor between `test` calls. */
+const NEWLINES = new RegExp('[\r\n]+');
+const SPACES = new RegExp('[\r\n]+', 'g');
 
 /** React Native text styles the parent passes, in the terms a div understands. */
 function cssOf(style: TextStyle): React.CSSProperties {

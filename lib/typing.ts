@@ -161,6 +161,27 @@ export function codeIndent(code: string, caret: number): string {
 }
 
 /**
+ * What one change did, worked out from the two strings: the stretch of the old
+ * text that went, and what went in its place.
+ *
+ * A native field hands back its whole text and never says how it got there, so
+ * a paste of five lines and a Return look the same until this is read off them.
+ */
+export function editOf(prev: string, next: string): { start: number; end: number; put: string } {
+  let head = 0;
+  while (head < prev.length && head < next.length && prev[head] === next[head]) head += 1;
+  let tail = 0;
+  while (
+    tail < prev.length - head &&
+    tail < next.length - head &&
+    prev[prev.length - 1 - tail] === next[next.length - 1 - tail]
+  ) {
+    tail += 1;
+  }
+  return { start: head, end: prev.length - tail, put: next.slice(head, next.length - tail) };
+}
+
+/**
  * Where the caret ends up after a change, worked out from the two strings:
  * `onChangeText` fires before `onSelectionChange`, so the field cannot be
  * asked.
